@@ -7,6 +7,9 @@
     "build": "tsc",
     "start": "node dist/index.js"
   },
+  "prisma": {
+    "seed": "ts-node prisma/seed.ts"
+  },
   "dependencies": {
     "@prisma/client": "^5.14.0",
     "bcrypt": "^6.0.0",
