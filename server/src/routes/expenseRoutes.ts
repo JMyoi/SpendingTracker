@@ -91,7 +91,7 @@ router.get('/dashboard', async (req, res) => {
       prisma.expense.findMany({
         where: { userId: user.id },
         orderBy: { date: 'desc' },
-        take: 7,
+        take: 10,
         select: expenseSelect,
       }),
     ]);

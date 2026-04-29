@@ -1,0 +1,69 @@
+import type { Expense } from "@/lib/api";
+
+export const categories = [
+  "Food",
+  "Food & Dining",
+  "Groceries",
+  "Transportation",
+  "Shopping",
+  "Entertainment",
+  "Bills",
+  "Bills & Utilities",
+  "Health",
+  "Healthcare",
+  "Personal Care",
+  "Education",
+  "Travel",
+  "Subscriptions",
+];
+
+const categoryStyles: Record<string, string> = {
+  Food: "bg-orange-50 text-orange-600",
+  "Food & Dining": "bg-orange-50 text-orange-600",
+  Groceries: "bg-lime-50 text-lime-700",
+  Transportation: "bg-blue-50 text-blue-600",
+  Shopping: "bg-violet-50 text-violet-600",
+  Entertainment: "bg-pink-50 text-pink-600",
+  Bills: "bg-yellow-50 text-yellow-700",
+  "Bills & Utilities": "bg-yellow-50 text-yellow-700",
+  Health: "bg-red-50 text-red-600",
+  Healthcare: "bg-red-50 text-red-600",
+  "Personal Care": "bg-rose-50 text-rose-600",
+  Education: "bg-emerald-50 text-emerald-700",
+  Travel: "bg-cyan-50 text-cyan-700",
+  Subscriptions: "bg-stone-100 text-stone-600",
+};
+
+export function formatCurrency(amount: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  }).format(amount);
+}
+
+export function formatDate(date: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(date));
+}
+
+export function formatMonth(date = new Date()) {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    year: "numeric",
+  }).format(date);
+}
+
+export function toDateInputValue(date: string) {
+  return new Date(date).toISOString().slice(0, 10);
+}
+
+export function getCategoryClass(category: string) {
+  return categoryStyles[category] ?? "bg-amber-50 text-amber-700";
+}
+
+export function expenseLabel(expense: Expense) {
+  return expense.title || expense.description || "Untitled expense";
+}
