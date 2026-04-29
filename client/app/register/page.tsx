@@ -2,23 +2,40 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import Input from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
+import { registerUser, storeCurrentUser } from "@/lib/api";
 
 export default function RegisterPage() {
+  const router = useRouter();
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setError("");
+
     if (password !== confirmPassword) {
-      alert("Passwords do not match. Please try again.");
+      setError("Passwords do not match. Please try again.");
       return;
     }
-    console.log({ username, email, password });
-    alert("Account created! (UI only — backend not connected yet)");
+
+    setIsSubmitting(true);
+
+    try {
+      const data = await registerUser(username, email, password);
+      storeCurrentUser(data.user);
+      router.push("/dashboard");
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Registration failed");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
@@ -79,8 +96,14 @@ export default function RegisterPage() {
             required
           />
 
-          <Button type="submit" fullWidth variant="primary">
-            Create Account
+          {error && (
+            <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-600">
+              {error}
+            </p>
+          )}
+
+          <Button type="submit" fullWidth variant="primary" disabled={isSubmitting}>
+            {isSubmitting ? "Creating account..." : "Create Account"}
           </Button>
         </form>
 

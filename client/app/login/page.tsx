@@ -2,17 +2,32 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import Input from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
+import { loginUser, storeCurrentUser } from "@/lib/api";
 
 export default function LoginPage() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    console.log({ email, password });
-    alert("Login submitted! (UI only — backend not connected yet)");
+    setError("");
+    setIsSubmitting(true);
+
+    try {
+      const data = await loginUser(email, password);
+      storeCurrentUser(data.user);
+      router.push("/dashboard");
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Login failed");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
@@ -51,8 +66,14 @@ export default function LoginPage() {
             required
           />
 
-          <Button type="submit" fullWidth variant="primary">
-            Log In
+          {error && (
+            <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-600">
+              {error}
+            </p>
+          )}
+
+          <Button type="submit" fullWidth variant="primary" disabled={isSubmitting}>
+            {isSubmitting ? "Logging in..." : "Log In"}
           </Button>
         </form>
 
