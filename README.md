@@ -111,3 +111,14 @@ PUT /expenses/:id
 
 #### Delete Expense
 DELETE /expenses/:id
+
+## Additional Features
+
+#### Set or Update Budget
+POST /budget
+
+#### Get Budget
+GET /budget?userId=1&month=2026-04
+
+#### Scan Receipt (OCR)
+POST /ocr
