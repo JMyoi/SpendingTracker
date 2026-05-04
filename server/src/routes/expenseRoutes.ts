@@ -215,6 +215,8 @@ router.post('/', async (req, res) => {
     res.status(500).json({ error: 'Failed to create expense' });
   }
 });
+
+
 // DELETE /expenses/:id
 router.delete('/:id', async (req, res) => {
   try {
@@ -242,6 +244,7 @@ router.delete('/:id', async (req, res) => {
     res.status(500).json({ error: 'Failed to delete expense' });
   }
 });
+
 // PUT /expenses/:id
 router.put('/:id', async (req, res) => {
   try {
