@@ -9,26 +9,27 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import type { MonthlyTrendPoint } from "@/lib/api";
 import { formatCurrency } from "@/components/dashboard/format";
 
 interface MonthlyTrendChartProps {
-  data: MonthlyTrendPoint[];
+  data: { label: string; amount: number }[];
+  title: string;
+  subtitle: string;
 }
 
-export default function MonthlyTrendChart({ data }: MonthlyTrendChartProps) {
+export default function MonthlyTrendChart({
+  data,
+  title,
+  subtitle,
+}: MonthlyTrendChartProps) {
   const hasData = data.some((point) => point.amount > 0);
 
   return (
     <div className="rounded-2xl border border-stone-100 bg-white p-6 shadow-sm">
       <div className="flex items-baseline justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-black text-stone-900">
-            Monthly Spending Trend
-          </h2>
-          <p className="mt-1 text-sm font-medium text-stone-500">
-            Last 6 months
-          </p>
+          <h2 className="text-2xl font-black text-stone-900">{title}</h2>
+          <p className="mt-1 text-sm font-medium text-stone-500">{subtitle}</p>
         </div>
       </div>
 

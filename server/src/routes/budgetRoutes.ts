@@ -79,6 +79,60 @@ router.post("/", async (req, res) => {
   }
 });
 
+router.get("/years", async (req, res) => {
+  try {
+    const { userId } = req.query;
+
+    if (!userId) {
+      return res.status(400).json({ error: "userId is required" });
+    }
+
+    const userIdNumber = Number(userId);
+    if (!Number.isInteger(userIdNumber) || userIdNumber <= 0) {
+      return res
+        .status(400)
+        .json({ error: "userId must be a positive integer" });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userIdNumber },
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const [expenseRows, budgetRows] = await Promise.all([
+      prisma.expense.findMany({
+        where: { userId: userIdNumber },
+        select: { date: true },
+      }),
+      prisma.budget.findMany({
+        where: { userId: userIdNumber },
+        select: { month: true },
+      }),
+    ]);
+
+    const yearSet = new Set<number>();
+    yearSet.add(new Date().getFullYear());
+    for (const row of expenseRows) {
+      yearSet.add(row.date.getFullYear());
+    }
+    for (const row of budgetRows) {
+      const year = Number(row.month.split("-")[0]);
+      if (Number.isFinite(year)) {
+        yearSet.add(year);
+      }
+    }
+
+    const years = Array.from(yearSet).sort((a, b) => b - a);
+    res.json({ years });
+  } catch (error) {
+    console.error("Get budget years error:", error);
+    res.status(500).json({ error: "Failed to fetch budget years" });
+  }
+});
+
 router.get("/", async (req, res) => {
   try {
     const { userId, month } = req.query;

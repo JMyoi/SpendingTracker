@@ -10,10 +10,25 @@ import {
 } from "@/components/dashboard/format";
 import { useRequireUser } from "@/components/dashboard/useRequireUser";
 import type { BudgetAnalysis } from "@/lib/api";
-import { getBudget, setBudget } from "@/lib/api";
+import { getBudget, getBudgetYears, setBudget } from "@/lib/api";
 
-function monthKey(date: Date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+const MONTH_OPTIONS: { value: number; label: string }[] = [
+  { value: 1, label: "January" },
+  { value: 2, label: "February" },
+  { value: 3, label: "March" },
+  { value: 4, label: "April" },
+  { value: 5, label: "May" },
+  { value: 6, label: "June" },
+  { value: 7, label: "July" },
+  { value: 8, label: "August" },
+  { value: 9, label: "September" },
+  { value: 10, label: "October" },
+  { value: 11, label: "November" },
+  { value: 12, label: "December" },
+];
+
+function monthKey(year: number, monthNumber: number) {
+  return `${year}-${String(monthNumber).padStart(2, "0")}`;
 }
 
 function monthLabel(month: string) {
@@ -24,45 +39,46 @@ function monthLabel(month: string) {
   }).format(new Date(year, monthNumber - 1, 1));
 }
 
-function buildMonthOptions(): string[] {
-  const today = new Date();
-  const options: string[] = [];
-  for (let offset = 2; offset >= -12; offset--) {
-    const date = new Date(today.getFullYear(), today.getMonth() + offset, 1);
-    options.push(monthKey(date));
-  }
-  return options;
-}
-
 export default function BudgetPage() {
   const { user, isCheckingUser } = useRequireUser();
-  const monthOptions = useMemo(() => buildMonthOptions(), []);
-  const currentMonth = useMemo(() => monthKey(new Date()), []);
+  const today = useMemo(() => new Date(), []);
+  const currentYear = today.getFullYear();
+  const currentMonthNumber = today.getMonth() + 1;
 
-  const [selectedMonth, setSelectedMonth] = useState(currentMonth);
+  const [selectedYear, setSelectedYear] = useState<number>(currentYear);
+  const [selectedMonthNumber, setSelectedMonthNumber] =
+    useState<number>(currentMonthNumber);
+  const [availableYears, setAvailableYears] = useState<number[]>([currentYear]);
   const [analysis, setAnalysis] = useState<BudgetAnalysis | null>(null);
-  const [currentMonthAnalysis, setCurrentMonthAnalysis] =
-    useState<BudgetAnalysis | null>(null);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [budgetInput, setBudgetInput] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
 
+  const selectedMonth = monthKey(selectedYear, selectedMonthNumber);
+
   function loadAnalysis(userId: number, month: string) {
     setIsLoading(true);
     setError("");
     return getBudget(userId, month)
-      .then((data) => {
-        setAnalysis(data);
-        if (data.month === currentMonth) {
-          setCurrentMonthAnalysis(data);
-        }
-      })
+      .then((data) => setAnalysis(data))
       .catch((err) => {
         setError(err instanceof Error ? err.message : "Failed to load budget");
       })
       .finally(() => setIsLoading(false));
+  }
+
+  function loadAvailableYears(userId: number) {
+    return getBudgetYears(userId)
+      .then((data) => {
+        if (data.years.length > 0) {
+          setAvailableYears(data.years);
+        }
+      })
+      .catch(() => {
+        // non-fatal: dropdown falls back to the current year only
+      });
   }
 
   useEffect(() => {
@@ -74,15 +90,12 @@ export default function BudgetPage() {
   }, [user, selectedMonth]);
 
   useEffect(() => {
-    if (!user || selectedMonth === currentMonth) {
+    if (!user) {
       return;
     }
-    getBudget(user.id, currentMonth)
-      .then((data) => setCurrentMonthAnalysis(data))
-      .catch(() => {
-        // non-fatal: keep last known value
-      });
-  }, [user, selectedMonth, currentMonth]);
+    loadAvailableYears(user.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   async function handleSubmitBudget(e: React.FormEvent) {
     e.preventDefault();
@@ -99,13 +112,11 @@ export default function BudgetPage() {
     setIsSaving(true);
     setSaveError("");
     try {
-      await setBudget(user.id, currentMonth, parsed);
+      await setBudget(user.id, selectedMonth, parsed);
       setBudgetInput("");
       await Promise.all([
         loadAnalysis(user.id, selectedMonth),
-        selectedMonth === currentMonth
-          ? Promise.resolve()
-          : getBudget(user.id, currentMonth).then(setCurrentMonthAnalysis),
+        loadAvailableYears(user.id),
       ]);
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Failed to save");
@@ -122,7 +133,10 @@ export default function BudgetPage() {
     );
   }
 
-  const currentBudget = currentMonthAnalysis?.budget ?? null;
+  const selectedMonthBudget = analysis?.budget ?? null;
+  const yearOptions = availableYears.includes(selectedYear)
+    ? availableYears
+    : [...availableYears, selectedYear].sort((a, b) => b - a);
 
   return (
     <AppShell user={user}>
@@ -147,12 +161,12 @@ export default function BudgetPage() {
           className="rounded-2xl border border-stone-100 bg-white p-6 shadow-sm"
         >
           <h2 className="text-2xl font-black text-stone-900">
-            Update Budget for {monthLabel(currentMonth)}
+            Update Budget for {monthLabel(selectedMonth)}
           </h2>
           <p className="mt-1 text-sm font-medium text-stone-500">
             Current:{" "}
-            {currentBudget !== null
-              ? formatCurrency(currentBudget)
+            {selectedMonthBudget !== null
+              ? formatCurrency(selectedMonthBudget)
               : "Not set"}
           </p>
           <div className="mt-5 flex gap-3">
@@ -166,7 +180,9 @@ export default function BudgetPage() {
                 step="0.01"
                 value={budgetInput}
                 placeholder={
-                  currentBudget !== null ? String(currentBudget) : "1000"
+                  selectedMonthBudget !== null
+                    ? String(selectedMonthBudget)
+                    : "1000"
                 }
                 onChange={(e) => setBudgetInput(e.target.value)}
                 className="w-full rounded-2xl border border-stone-200 bg-stone-50 py-3 pl-10 pr-4 text-lg font-semibold outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-200"
@@ -191,18 +207,42 @@ export default function BudgetPage() {
           <h2 className="text-2xl font-black text-stone-900">
             Select Month to Analyze
           </h2>
-          <select
-            value={selectedMonth}
-            onChange={(e) => setSelectedMonth(e.target.value)}
-            className="mt-5 w-full rounded-2xl border-2 border-indigo-300 bg-white px-4 py-3 text-lg font-semibold text-stone-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
-          >
-            {monthOptions.map((option) => (
-              <option key={option} value={option}>
-                {monthLabel(option)}
-                {option === currentMonth ? " (Current)" : ""}
-              </option>
-            ))}
-          </select>
+          <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+            <label className="relative flex-1">
+              <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-stone-400">
+                ▾
+              </span>
+              <select
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(Number(e.target.value))}
+                className="w-full appearance-none rounded-2xl border-2 border-indigo-300 bg-white py-3 pl-10 pr-8 text-base font-semibold text-stone-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
+              >
+                {yearOptions.map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="relative flex-1">
+              <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-stone-400">
+                ▾
+              </span>
+              <select
+                value={selectedMonthNumber}
+                onChange={(e) =>
+                  setSelectedMonthNumber(Number(e.target.value))
+                }
+                className="w-full appearance-none rounded-2xl border-2 border-indigo-300 bg-white py-3 pl-10 pr-8 text-base font-semibold text-stone-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
+              >
+                {MONTH_OPTIONS.map((month) => (
+                  <option key={month.value} value={month.value}>
+                    {month.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
           <p
             className={`mt-3 flex items-center gap-2 text-sm font-semibold ${
               analysis?.budget != null

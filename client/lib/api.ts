@@ -53,6 +53,7 @@ export type SortOrder = "asc" | "desc";
 
 export interface ExpenseListData {
   expenses: Expense[];
+  filteredTotal: number;
   pagination: {
     page: number;
     limit: number;
@@ -180,6 +181,40 @@ export function getExpenseYears(userId: number) {
   );
 }
 
+export type ExpenseTrendGranularity = "year" | "month" | "day";
+
+export interface ExpenseTrendPoint {
+  key: string;
+  label: string;
+  amount: number;
+}
+
+export interface ExpenseTrendData {
+  granularity: ExpenseTrendGranularity;
+  points: ExpenseTrendPoint[];
+}
+
+export function getExpenseTrend(
+  userId: number,
+  filters: ExpenseFilters = {},
+) {
+  const params = new URLSearchParams({ userId: String(userId) });
+
+  if (filters.year) {
+    params.set("year", String(filters.year));
+  }
+  if (filters.month) {
+    params.set("month", String(filters.month));
+  }
+  if (filters.search && filters.search.trim()) {
+    params.set("search", filters.search.trim());
+  }
+
+  return requestJson<ExpenseTrendData>(
+    `/expenses/trend?${params.toString()}`,
+  );
+}
+
 export function updateExpense(id: number, data: UpdateExpenseInput) {
   return requestJson<{ message: string; expense: Expense }>(`/expenses/${id}`, {
     method: "PUT",
@@ -233,5 +268,11 @@ export function setBudget(userId: number, month: string, amount: number) {
   return postJson<{ id: number; userId: number; amount: number; month: string }>(
     "/budget",
     { userId, month, amount },
+  );
+}
+
+export function getBudgetYears(userId: number) {
+  return requestJson<{ years: number[] }>(
+    `/budget/years?userId=${userId}`,
   );
 }

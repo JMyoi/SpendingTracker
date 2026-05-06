@@ -326,7 +326,11 @@ export default function DashboardPage() {
 
           <section className="mt-8 grid gap-5 lg:grid-cols-3">
             <div className="lg:col-span-2">
-              <MonthlyTrendChart data={dashboard.monthlyTrend} />
+              <MonthlyTrendChart
+                data={dashboard.monthlyTrend}
+                title="Monthly Spending Trend"
+                subtitle="Last 6 months"
+              />
             </div>
             <CategoryDonutChart data={dashboard.categoryBreakdown} />
           </section>

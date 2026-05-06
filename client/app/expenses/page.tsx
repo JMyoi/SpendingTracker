@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import AppShell from "@/components/dashboard/AppShell";
+import MonthlyTrendChart from "@/components/dashboard/MonthlyTrendChart";
 import {
   categories,
   expenseLabel,
@@ -16,12 +17,34 @@ import type {
   Expense,
   ExpenseListData,
   ExpenseSortBy,
+  ExpenseTrendData,
   SortOrder,
   UpdateExpenseInput,
 } from "@/lib/api";
-import { createExpense, deleteExpense, getExpenses, updateExpense } from "@/lib/api";
+import {
+  createExpense,
+  deleteExpense,
+  getExpenseTrend,
+  getExpenseYears,
+  getExpenses,
+  updateExpense,
+} from "@/lib/api";
 
 const PAGE_LIMIT = 10;
+const MONTH_OPTIONS: { value: number; label: string }[] = [
+  { value: 1, label: "January" },
+  { value: 2, label: "February" },
+  { value: 3, label: "March" },
+  { value: 4, label: "April" },
+  { value: 5, label: "May" },
+  { value: 6, label: "June" },
+  { value: 7, label: "July" },
+  { value: 8, label: "August" },
+  { value: 9, label: "September" },
+  { value: 10, label: "October" },
+  { value: 11, label: "November" },
+  { value: 12, label: "December" },
+];
 const defaultForm = {
   title: "",
   amount: "",
@@ -95,6 +118,12 @@ export default function ExpensesPage() {
   const [page, setPage] = useState(1);
   const [sortBy, setSortBy] = useState<ExpenseSortBy>("date");
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
+  const [yearFilter, setYearFilter] = useState<number | null>(null);
+  const [monthFilter, setMonthFilter] = useState<number | null>(null);
+  const [searchInput, setSearchInput] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [availableYears, setAvailableYears] = useState<number[]>([]);
+  const [trend, setTrend] = useState<ExpenseTrendData | null>(null);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isAddingExpense, setIsAddingExpense] = useState(false);
@@ -144,10 +173,20 @@ export default function ExpensesPage() {
       return;
     }
 
+    const filters = {
+      year: yearFilter ?? undefined,
+      month: yearFilter && monthFilter ? monthFilter : undefined,
+      search: searchQuery,
+    };
+
     setIsLoading(true);
-    getExpenses(user.id, page, PAGE_LIMIT, sortBy, sortOrder)
-      .then((data) => {
-        setExpenseData(data);
+    Promise.all([
+      getExpenses(user.id, page, PAGE_LIMIT, sortBy, sortOrder, filters),
+      getExpenseTrend(user.id, filters),
+    ])
+      .then(([listData, trendData]) => {
+        setExpenseData(listData);
+        setTrend(trendData);
         setError("");
       })
       .catch((error) => {
@@ -158,10 +197,50 @@ export default function ExpensesPage() {
       .finally(() => setIsLoading(false));
   }
 
+  function loadAvailableYears() {
+    if (!user) {
+      return;
+    }
+
+    getExpenseYears(user.id)
+      .then((data) => setAvailableYears(data.years))
+      .catch(() => {
+        // non-fatal: dropdown will fall back to "All Years" only
+      });
+  }
+
   useEffect(() => {
     loadExpenses();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, page, sortBy, sortOrder]);
+  }, [user, page, sortBy, sortOrder, yearFilter, monthFilter, searchQuery]);
+
+  useEffect(() => {
+    loadAvailableYears();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      setSearchQuery(searchInput);
+      setPage(1);
+    }, 300);
+    return () => window.clearTimeout(handle);
+  }, [searchInput]);
+
+  function handleYearChange(value: string) {
+    setPage(1);
+    if (value === "all") {
+      setYearFilter(null);
+      setMonthFilter(null);
+      return;
+    }
+    setYearFilter(Number(value));
+  }
+
+  function handleMonthChange(value: string) {
+    setPage(1);
+    setMonthFilter(value === "all" ? null : Number(value));
+  }
 
   function handleSort(field: ExpenseSortBy) {
     setPage(1);
@@ -215,6 +294,7 @@ export default function ExpensesPage() {
 
       closeExpenseForm();
       loadExpenses();
+      loadAvailableYears();
     } catch (error) {
       setFormError(
         error instanceof Error ? error.message : "Failed to save expense",
@@ -235,6 +315,7 @@ export default function ExpensesPage() {
       await deleteExpense(deletingExpense.id);
       setDeletingExpense(null);
       loadExpenses();
+      loadAvailableYears();
     } catch (error) {
       setError(
         error instanceof Error ? error.message : "Failed to delete expense",
@@ -253,6 +334,22 @@ export default function ExpensesPage() {
   }
 
   const pagination = expenseData?.pagination;
+
+  let trendRangeLabel: string;
+  let trendSubtitle: string;
+  if (yearFilter && monthFilter) {
+    trendRangeLabel = new Intl.DateTimeFormat("en-US", {
+      month: "long",
+      year: "numeric",
+    }).format(new Date(yearFilter, monthFilter - 1, 1));
+    trendSubtitle = "By day";
+  } else if (yearFilter) {
+    trendRangeLabel = String(yearFilter);
+    trendSubtitle = "By month";
+  } else {
+    trendRangeLabel = "All Time";
+    trendSubtitle = "By year";
+  }
 
   return (
     <AppShell user={user}>
@@ -275,11 +372,85 @@ export default function ExpensesPage() {
         </button>
       </section>
 
-      <div className="mt-8 inline-block rounded-2xl border border-stone-100 bg-white px-6 py-5 shadow-sm">
-        <p className="text-sm font-bold text-stone-500">Total Records</p>
-        <p className="mt-2 text-3xl font-black text-stone-950">
-          {pagination?.totalRecords ?? 0}
-        </p>
+      <div className="mx-auto mt-8 grid w-full max-w-3xl grid-cols-2 gap-5">
+        <div className="rounded-2xl border border-stone-100 bg-white px-6 py-6 text-center shadow-sm">
+          <p className="text-sm font-bold uppercase tracking-wide text-stone-500">
+            Total Records
+          </p>
+          <p className="mt-3 text-4xl font-black tracking-tight text-stone-950">
+            {pagination?.totalRecords ?? 0}
+          </p>
+        </div>
+        <div className="rounded-2xl border border-stone-100 bg-white px-6 py-6 text-center shadow-sm">
+          <p className="text-sm font-bold uppercase tracking-wide text-stone-500">
+            Filtered Total
+          </p>
+          <p className="mt-3 text-4xl font-black tracking-tight text-stone-950">
+            {formatCurrency(expenseData?.filteredTotal ?? 0)}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-6 flex flex-col gap-3 rounded-2xl border border-stone-100 bg-white p-4 shadow-sm sm:flex-row sm:items-center">
+        <label className="relative flex-1">
+          <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-stone-400">
+            🔍
+          </span>
+          <input
+            type="text"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder="Search expenses..."
+            className="w-full rounded-2xl border border-stone-200 bg-stone-50 py-3 pl-11 pr-4 text-base font-medium outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-200"
+          />
+        </label>
+
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <label className="relative">
+            <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-stone-400">
+              ▾
+            </span>
+            <select
+              value={yearFilter ?? "all"}
+              onChange={(e) => handleYearChange(e.target.value)}
+              className="appearance-none rounded-2xl border-2 border-indigo-300 bg-white py-3 pl-10 pr-8 text-base font-semibold text-stone-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
+            >
+              <option value="all">All Years</option>
+              {availableYears.map((year) => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="relative">
+            <span
+              className={`pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 ${
+                yearFilter ? "text-stone-400" : "text-stone-300"
+              }`}
+            >
+              ▾
+            </span>
+            <select
+              value={monthFilter ?? "all"}
+              onChange={(e) => handleMonthChange(e.target.value)}
+              disabled={!yearFilter}
+              className={`appearance-none rounded-2xl border-2 py-3 pl-10 pr-8 text-base font-semibold outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 ${
+                yearFilter
+                  ? "border-indigo-300 bg-white text-stone-900"
+                  : "cursor-not-allowed border-stone-200 bg-stone-50 text-stone-400"
+              }`}
+            >
+              <option value="all">All Months</option>
+              {MONTH_OPTIONS.map((month) => (
+                <option key={month.value} value={month.value}>
+                  {month.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
       </div>
 
       {error && (
@@ -397,6 +568,14 @@ export default function ExpensesPage() {
             </div>
           </div>
         )}
+      </section>
+
+      <section className="mt-8">
+        <MonthlyTrendChart
+          data={trend?.points ?? []}
+          title={`Spending Trend – ${trendRangeLabel}`}
+          subtitle={trendSubtitle}
+        />
       </section>
 
       {(editingExpense || isAddingExpense) && (
