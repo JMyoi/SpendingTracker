@@ -90,7 +90,25 @@ async function main() {
     data: expenses,
   });
 
-  console.log(`Seeded ${user.email} with ${expenses.length} expenses.`);
+  const now = new Date();
+  const budgetAmountsByOffset = [1500, 1400, 1500, 1300, 1450, 1500];
+  const budgets = budgetAmountsByOffset.map((amount, offset) => {
+    const bucketDate = new Date(now.getFullYear(), now.getMonth() - 5 + offset, 1);
+    const month = `${bucketDate.getFullYear()}-${String(bucketDate.getMonth() + 1).padStart(2, '0')}`;
+    return {
+      userId: user.id,
+      amount,
+      month,
+    };
+  });
+
+  await prisma.budget.createMany({
+    data: budgets,
+  });
+
+  console.log(
+    `Seeded ${user.email} with ${expenses.length} expenses and ${budgets.length} monthly budgets.`,
+  );
 }
 
 main()

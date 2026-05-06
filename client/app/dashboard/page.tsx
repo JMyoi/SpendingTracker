@@ -3,7 +3,9 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import AppShell from "@/components/dashboard/AppShell";
+import CategoryDonutChart from "@/components/dashboard/CategoryDonutChart";
 import ExpenseRow from "@/components/dashboard/ExpenseRow";
+import MonthlyTrendChart from "@/components/dashboard/MonthlyTrendChart";
 import {
   categories,
   formatCurrency,
@@ -186,6 +188,13 @@ export default function DashboardPage() {
               detail={`${dashboard.totalExpenses.recordCount} all-time records`}
               icon="%"
             />
+          </section>
+
+          <section className="mt-8 grid gap-5 lg:grid-cols-3">
+            <div className="lg:col-span-2">
+              <MonthlyTrendChart data={dashboard.monthlyTrend} />
+            </div>
+            <CategoryDonutChart data={dashboard.categoryBreakdown} />
           </section>
 
           <section className="mt-8 overflow-hidden rounded-2xl border border-stone-100 bg-white shadow-sm">

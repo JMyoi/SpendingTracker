@@ -64,6 +64,27 @@ export function getCategoryClass(category: string) {
   return categoryStyles[category] ?? "bg-amber-50 text-amber-700";
 }
 
+const categoryChartColors: Record<string, string> = {
+  Food: "#ea580c",
+  "Food & Dining": "#ea580c",
+  Groceries: "#4d7c0f",
+  Transportation: "#2563eb",
+  Shopping: "#7c3aed",
+  Entertainment: "#db2777",
+  Bills: "#a16207",
+  "Bills & Utilities": "#a16207",
+  Health: "#dc2626",
+  Healthcare: "#dc2626",
+  "Personal Care": "#e11d48",
+  Education: "#047857",
+  Travel: "#0e7490",
+  Subscriptions: "#57534e",
+};
+
+export function getCategoryChartColor(category: string) {
+  return categoryChartColors[category] ?? "#d97706";
+}
+
 export function expenseLabel(expense: Expense) {
   return expense.title || expense.description || "Untitled expense";
 }

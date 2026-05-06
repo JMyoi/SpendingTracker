@@ -23,6 +23,17 @@ export interface Expense {
   updatedAt: string;
 }
 
+export interface MonthlyTrendPoint {
+  month: string;
+  label: string;
+  amount: number;
+}
+
+export interface CategoryBreakdownEntry {
+  category: string;
+  amount: number;
+}
+
 export interface DashboardData {
   spentThisMonth: {
     amount: number;
@@ -33,6 +44,8 @@ export interface DashboardData {
     recordCount: number;
   };
   recentExpenses: Expense[];
+  monthlyTrend: MonthlyTrendPoint[];
+  categoryBreakdown: CategoryBreakdownEntry[];
 }
 
 export type ExpenseSortBy = "date" | "title" | "category" | "amount";

@@ -70,8 +70,15 @@ router.get('/dashboard', async (req, res) => {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const sixMonthsAgoStart = new Date(now.getFullYear(), now.getMonth() - 5, 1);
 
-    const [spentThisMonth, totalExpenses, recentExpenses] = await Promise.all([
+    const [
+      spentThisMonth,
+      totalExpenses,
+      recentExpenses,
+      trendRows,
+      categoryRows,
+    ] = await Promise.all([
       prisma.expense.aggregate({
         where: {
           userId: user.id,
@@ -94,7 +101,52 @@ router.get('/dashboard', async (req, res) => {
         take: 10,
         select: expenseSelect,
       }),
+      prisma.expense.findMany({
+        where: {
+          userId: user.id,
+          date: {
+            gte: sixMonthsAgoStart,
+            lt: nextMonthStart,
+          },
+        },
+        select: { date: true, amount: true },
+      }),
+      prisma.expense.groupBy({
+        by: ['category'],
+        where: {
+          userId: user.id,
+          date: {
+            gte: monthStart,
+            lt: nextMonthStart,
+          },
+        },
+        _sum: { amount: true },
+      }),
     ]);
+
+    const monthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const trendBuckets = new Map<string, number>();
+    for (const row of trendRows) {
+      const key = `${row.date.getFullYear()}-${String(row.date.getMonth() + 1).padStart(2, '0')}`;
+      trendBuckets.set(key, (trendBuckets.get(key) ?? 0) + row.amount);
+    }
+    const monthlyTrend = Array.from({ length: 6 }, (_, offset) => {
+      const bucketDate = new Date(now.getFullYear(), now.getMonth() - 5 + offset, 1);
+      const key = `${bucketDate.getFullYear()}-${String(bucketDate.getMonth() + 1).padStart(2, '0')}`;
+      return {
+        month: key,
+        label: monthLabels[bucketDate.getMonth()],
+        amount: roundMoney(trendBuckets.get(key) ?? 0),
+      };
+    });
+
+    const categoryBreakdown = categoryRows
+      .map((row) => ({
+        category: row.category,
+        amount: roundMoney(row._sum.amount ?? 0),
+      }))
+      .filter((entry) => entry.amount > 0)
+      .sort((a, b) => b.amount - a.amount);
 
     res.json({
       spentThisMonth: {
@@ -106,6 +158,8 @@ router.get('/dashboard', async (req, res) => {
         recordCount: totalExpenses._count.id,
       },
       recentExpenses,
+      monthlyTrend,
+      categoryBreakdown,
     });
   } catch (error) {
     console.error(error);
