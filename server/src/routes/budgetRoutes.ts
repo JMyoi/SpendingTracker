@@ -79,6 +79,122 @@ router.post("/", async (req, res) => {
   }
 });
 
+router.get("/comparison", async (req, res) => {
+  try {
+    const { userId } = req.query;
+
+    if (!userId) {
+      return res.status(400).json({ error: "userId is required" });
+    }
+
+    const userIdNumber = Number(userId);
+    if (!Number.isInteger(userIdNumber) || userIdNumber <= 0) {
+      return res
+        .status(400)
+        .json({ error: "userId must be a positive integer" });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userIdNumber },
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const monthShortLabels = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ];
+
+    const today = new Date();
+    let centerYear = today.getFullYear();
+    let centerMonthIndex = today.getMonth();
+
+    const monthParam = req.query.month;
+    if (typeof monthParam === "string" && /^\d{4}-\d{2}$/.test(monthParam)) {
+      const [parsedYear, parsedMonth] = monthParam.split("-").map(Number);
+      if (parsedMonth >= 1 && parsedMonth <= 12) {
+        centerYear = parsedYear;
+        centerMonthIndex = parsedMonth - 1;
+      }
+    }
+
+    const windowOffsets = [-3, -2, -1, 0, 1, 2, 3];
+    const windowMonths = windowOffsets.map((offset) => {
+      const date = new Date(centerYear, centerMonthIndex + offset, 1);
+      const year = date.getFullYear();
+      const monthIndex = date.getMonth();
+      return {
+        year,
+        monthIndex,
+        key: `${year}-${String(monthIndex + 1).padStart(2, "0")}`,
+        label: monthShortLabels[monthIndex],
+        startDate: new Date(year, monthIndex, 1),
+        endDate: new Date(year, monthIndex + 1, 1),
+      };
+    });
+
+    const earliestStart = windowMonths[0].startDate;
+    const latestEnd = windowMonths[windowMonths.length - 1].endDate;
+    const monthKeys = windowMonths.map((entry) => entry.key);
+
+    const [budgetRows, expenseRows] = await Promise.all([
+      prisma.budget.findMany({
+        where: {
+          userId: userIdNumber,
+          month: { in: monthKeys },
+        },
+        select: { month: true, amount: true },
+      }),
+      prisma.expense.findMany({
+        where: {
+          userId: userIdNumber,
+          date: { gte: earliestStart, lt: latestEnd },
+        },
+        select: { date: true, amount: true },
+      }),
+    ]);
+
+    const budgetByMonth = new Map<string, number>();
+    for (const row of budgetRows) {
+      budgetByMonth.set(row.month, row.amount);
+    }
+
+    const spentByMonth = new Map<string, number>();
+    for (const row of expenseRows) {
+      const key = `${row.date.getFullYear()}-${String(
+        row.date.getMonth() + 1,
+      ).padStart(2, "0")}`;
+      spentByMonth.set(key, (spentByMonth.get(key) ?? 0) + row.amount);
+    }
+
+    const months = windowMonths.map((entry) => ({
+      month: entry.key,
+      label: entry.label,
+      budget: budgetByMonth.has(entry.key)
+        ? Number((budgetByMonth.get(entry.key) ?? 0).toFixed(2))
+        : null,
+      spent: Number((spentByMonth.get(entry.key) ?? 0).toFixed(2)),
+    }));
+
+    res.json({ months });
+  } catch (error) {
+    console.error("Get budget comparison error:", error);
+    res.status(500).json({ error: "Failed to fetch budget comparison" });
+  }
+});
+
 router.get("/years", async (req, res) => {
   try {
     const { userId } = req.query;

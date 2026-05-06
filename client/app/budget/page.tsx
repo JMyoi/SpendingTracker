@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import AppShell from "@/components/dashboard/AppShell";
+import BudgetComparisonChart from "@/components/dashboard/BudgetComparisonChart";
 import {
   formatCurrency,
   getCategoryChartColor,
@@ -9,8 +10,13 @@ import {
   rankingStyles,
 } from "@/components/dashboard/format";
 import { useRequireUser } from "@/components/dashboard/useRequireUser";
-import type { BudgetAnalysis } from "@/lib/api";
-import { getBudget, getBudgetYears, setBudget } from "@/lib/api";
+import type { BudgetAnalysis, BudgetComparisonData } from "@/lib/api";
+import {
+  getBudget,
+  getBudgetComparison,
+  getBudgetYears,
+  setBudget,
+} from "@/lib/api";
 
 const MONTH_OPTIONS: { value: number; label: string }[] = [
   { value: 1, label: "January" },
@@ -50,6 +56,9 @@ export default function BudgetPage() {
     useState<number>(currentMonthNumber);
   const [availableYears, setAvailableYears] = useState<number[]>([currentYear]);
   const [analysis, setAnalysis] = useState<BudgetAnalysis | null>(null);
+  const [comparison, setComparison] = useState<BudgetComparisonData | null>(
+    null,
+  );
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [budgetInput, setBudgetInput] = useState("");
@@ -81,11 +90,20 @@ export default function BudgetPage() {
       });
   }
 
+  function loadComparison(userId: number, month: string) {
+    return getBudgetComparison(userId, month)
+      .then((data) => setComparison(data))
+      .catch(() => {
+        // non-fatal: chart will hide
+      });
+  }
+
   useEffect(() => {
     if (!user) {
       return;
     }
     loadAnalysis(user.id, selectedMonth);
+    loadComparison(user.id, selectedMonth);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, selectedMonth]);
 
@@ -117,6 +135,7 @@ export default function BudgetPage() {
       await Promise.all([
         loadAnalysis(user.id, selectedMonth),
         loadAvailableYears(user.id),
+        loadComparison(user.id, selectedMonth),
       ]);
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Failed to save");
@@ -275,6 +294,10 @@ export default function BudgetPage() {
           month={analysis.month}
           entries={analysis.categoryBreakdown}
         />
+      )}
+
+      {comparison && (
+        <BudgetComparisonChart data={comparison.months} />
       )}
     </AppShell>
   );

@@ -276,3 +276,24 @@ export function getBudgetYears(userId: number) {
     `/budget/years?userId=${userId}`,
   );
 }
+
+export interface BudgetComparisonMonth {
+  month: string;
+  label: string;
+  budget: number | null;
+  spent: number;
+}
+
+export interface BudgetComparisonData {
+  months: BudgetComparisonMonth[];
+}
+
+export function getBudgetComparison(userId: number, month?: string) {
+  const params = new URLSearchParams({ userId: String(userId) });
+  if (month) {
+    params.set("month", month);
+  }
+  return requestJson<BudgetComparisonData>(
+    `/budget/comparison?${params.toString()}`,
+  );
+}
