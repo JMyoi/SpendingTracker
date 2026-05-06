@@ -1,4 +1,4 @@
-import type { Expense } from "@/lib/api";
+import type { BudgetRanking, Expense } from "@/lib/api";
 
 export const categories = [
   "Food",
@@ -84,6 +84,71 @@ const categoryChartColors: Record<string, string> = {
 export function getCategoryChartColor(category: string) {
   return categoryChartColors[category] ?? "#d97706";
 }
+
+const categoryEmojis: Record<string, string> = {
+  Food: "🍔",
+  "Food & Dining": "🍔",
+  Groceries: "🛒",
+  Transportation: "🚗",
+  Shopping: "🛍️",
+  Entertainment: "🎬",
+  Bills: "⚡",
+  "Bills & Utilities": "⚡",
+  Health: "🏥",
+  Healthcare: "🏥",
+  "Personal Care": "💅",
+  Education: "🎓",
+  Travel: "✈️",
+  Subscriptions: "📺",
+};
+
+export function getCategoryEmoji(category: string) {
+  return categoryEmojis[category] ?? "💰";
+}
+
+export interface RankingStyle {
+  pillBg: string;
+  pillText: string;
+  barBg: string;
+  bannerBg: string;
+  bannerText: string;
+  label: string;
+}
+
+export const rankingStyles: Record<BudgetRanking, RankingStyle> = {
+  excellent: {
+    pillBg: "bg-emerald-50",
+    pillText: "text-emerald-600",
+    barBg: "bg-emerald-500",
+    bannerBg: "bg-emerald-50",
+    bannerText: "text-emerald-700",
+    label: "Excellent",
+  },
+  ok: {
+    pillBg: "bg-sky-50",
+    pillText: "text-sky-600",
+    barBg: "bg-sky-500",
+    bannerBg: "bg-sky-50",
+    bannerText: "text-sky-700",
+    label: "OK",
+  },
+  fair: {
+    pillBg: "bg-amber-50",
+    pillText: "text-amber-600",
+    barBg: "bg-amber-500",
+    bannerBg: "bg-amber-50",
+    bannerText: "text-amber-700",
+    label: "Fair",
+  },
+  bad: {
+    pillBg: "bg-red-50",
+    pillText: "text-red-600",
+    barBg: "bg-red-500",
+    bannerBg: "bg-red-50",
+    bannerText: "text-red-700",
+    label: "Bad",
+  },
+};
 
 export function expenseLabel(expense: Expense) {
   return expense.title || expense.description || "Untitled expense";

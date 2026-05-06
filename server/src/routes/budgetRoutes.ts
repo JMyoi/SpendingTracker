@@ -1,17 +1,58 @@
-import express from "express";
-import { PrismaClient } from "@prisma/client";
+import { Router } from "express";
+import prisma from "../prisma";
 
-const router = express.Router();
-const prisma = new PrismaClient();
+const router = Router();
+
+type Ranking = "excellent" | "ok" | "fair" | "bad";
+
+function roundMoney(amount: number) {
+  return Number(amount.toFixed(2));
+}
+
+function rankingForPercentage(percentage: number): {
+  ranking: Ranking;
+  message: string;
+} {
+  if (percentage > 100) {
+    return {
+      ranking: "bad",
+      message: "You exceeded your budget this month.",
+    };
+  }
+  if (percentage >= 80) {
+    return {
+      ranking: "fair",
+      message: "Watch out — you're close to your limit.",
+    };
+  }
+  if (percentage >= 50) {
+    return {
+      ranking: "ok",
+      message: "Great job! You're managing your budget well.",
+    };
+  }
+  return {
+    ranking: "excellent",
+    message: "Outstanding! You stayed well under budget.",
+  };
+}
 
 router.post("/", async (req, res) => {
   try {
     const { userId, amount, month } = req.body;
 
-    if (!userId || !amount || !month) {
+    if (!userId || amount === undefined || amount === null || !month) {
       return res.status(400).json({
         error: "userId, amount, and month are required",
       });
+    }
+
+    const parsedAmount = Number(amount);
+
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      return res
+        .status(400)
+        .json({ error: "amount must be a positive number" });
     }
 
     const budget = await prisma.budget.upsert({
@@ -22,11 +63,11 @@ router.post("/", async (req, res) => {
         },
       },
       update: {
-        amount: Number(amount),
+        amount: parsedAmount,
       },
       create: {
         userId: Number(userId),
-        amount: Number(amount),
+        amount: parsedAmount,
         month: String(month),
       },
     });
@@ -48,67 +89,112 @@ router.get("/", async (req, res) => {
       });
     }
 
-    // 1️⃣ 找预算
-    const budget = await prisma.budget.findUnique({
-      where: {
-        userId_month: {
-          userId: Number(userId),
-          month: String(month),
+    const userIdNumber = Number(userId);
+    const monthString = String(month);
+
+    if (!/^\d{4}-\d{2}$/.test(monthString)) {
+      return res.status(400).json({ error: "month must be in YYYY-MM format" });
+    }
+
+    const [yearPart, monthPart] = monthString.split("-").map(Number);
+    const startDate = new Date(yearPart, monthPart - 1, 1);
+    const endDate = new Date(yearPart, monthPart, 1);
+
+    const [budget, expenseAggregate, categoryRows] = await Promise.all([
+      prisma.budget.findUnique({
+        where: {
+          userId_month: {
+            userId: userIdNumber,
+            month: monthString,
+          },
         },
-      },
-    });
+      }),
+      prisma.expense.aggregate({
+        _sum: { amount: true },
+        _count: { id: true },
+        where: {
+          userId: userIdNumber,
+          date: {
+            gte: startDate,
+            lt: endDate,
+          },
+        },
+      }),
+      prisma.expense.groupBy({
+        by: ["category"],
+        where: {
+          userId: userIdNumber,
+          date: {
+            gte: startDate,
+            lt: endDate,
+          },
+        },
+        _sum: { amount: true },
+      }),
+    ]);
+
+    const spent = roundMoney(expenseAggregate._sum.amount ?? 0);
+    const transactionCount = expenseAggregate._count.id;
+
+    const now = new Date();
+    const isCurrentMonth =
+      now.getFullYear() === yearPart && now.getMonth() === monthPart - 1;
+    const daysInMonth = new Date(yearPart, monthPart, 0).getDate();
+    const daysElapsed = isCurrentMonth ? now.getDate() : daysInMonth;
+    const dailyAverage =
+      daysElapsed > 0 ? roundMoney(spent / daysElapsed) : 0;
+
+    const categoryBreakdown = categoryRows
+      .map((row) => {
+        const amount = roundMoney(row._sum.amount ?? 0);
+        return {
+          category: row.category,
+          amount,
+          percentage:
+            spent > 0 ? Number(((amount / spent) * 100).toFixed(2)) : 0,
+        };
+      })
+      .filter((entry) => entry.amount > 0)
+      .sort((a, b) => b.amount - a.amount);
 
     if (!budget) {
-      return res.status(404).json({
-        error: "Budget not found",
+      return res.json({
+        month: monthString,
+        budget: null,
+        spent,
+        remaining: null,
+        percentage: null,
+        ranking: null,
+        message: null,
+        transactionCount,
+        dailyAverage,
+        daysInMonth,
+        daysElapsed,
+        categoryBreakdown,
       });
     }
 
-    // 2️⃣ 计算时间范围（这个月）
-    const startDate = new Date(`${month}-01`);
-    const endDate = new Date(startDate);
-    endDate.setMonth(endDate.getMonth() + 1);
+    const remaining = roundMoney(budget.amount - spent);
+    const percentage =
+      budget.amount > 0
+        ? Number(((spent / budget.amount) * 100).toFixed(2))
+        : 0;
+    const { ranking, message } = rankingForPercentage(percentage);
 
-    // 3️⃣ 汇总这个月的支出
-    const expenses = await prisma.expense.aggregate({
-      _sum: {
-        amount: true,
-      },
-      where: {
-        userId: Number(userId),
-        date: {
-          gte: startDate,
-          lt: endDate,
-        },
-      },
-    });
-
-    const spent = expenses._sum.amount || 0;
-    const remaining = budget.amount - spent;
-    const percentage = (spent / budget.amount) * 100;
-
-    // 4️⃣ 状态判断（新增）
-    let status = "safe";
-    let message = "You are within your monthly budget.";
-
-    if (spent > budget.amount) {
-      status = "over_budget";
-      message = "You have exceeded your monthly budget.";
-    } else if (percentage >= 80) {
-      status = "warning";
-      message = "You have used over 80% of your monthly budget.";
-    }
-
-    // 5️⃣ 返回
     res.json({
+      month: monthString,
       budget: budget.amount,
       spent,
       remaining,
-      percentage: Number(percentage.toFixed(2)),
-      status,
+      percentage,
+      ranking,
       message,
+      transactionCount,
+      dailyAverage,
+      daysInMonth,
+      daysElapsed,
+      categoryBreakdown,
     });
-
   } catch (error) {
     console.error("Get budget error:", error);
     res.status(500).json({

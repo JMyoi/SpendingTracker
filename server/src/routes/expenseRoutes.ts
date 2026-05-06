@@ -167,6 +167,35 @@ router.get('/dashboard', async (req, res) => {
   }
 });
 
+// GET /expenses/years
+router.get('/years', async (req, res) => {
+  try {
+    if (!req.query.userId) {
+      return res.status(400).json({ error: 'userId is required' });
+    }
+
+    const user = await findUserByQueryId(req.query.userId);
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const expenses = await prisma.expense.findMany({
+      where: { userId: user.id },
+      select: { date: true },
+    });
+
+    const years = Array.from(
+      new Set(expenses.map((expense) => expense.date.getFullYear())),
+    ).sort((a, b) => b - a);
+
+    res.json({ years });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to fetch expense years' });
+  }
+});
+
 // GET /expenses
 router.get('/', async (req, res) => {
   try {
@@ -198,17 +227,49 @@ router.get('/', async (req, res) => {
     const orderBy: Prisma.ExpenseOrderByWithRelationInput = { [sortBy]: sortOrder };
     const skip = (page - 1) * limit;
 
+    const yearParam = parsePositiveInteger(req.query.year);
+    const monthParam = parsePositiveInteger(req.query.month);
+    const searchValue = getQueryValue(req.query.search);
+    const search = typeof searchValue === 'string' ? searchValue.trim() : '';
+
+    let dateFilter: { gte: Date; lt: Date } | undefined;
+    if (yearParam) {
+      if (monthParam && monthParam >= 1 && monthParam <= 12) {
+        dateFilter = {
+          gte: new Date(yearParam, monthParam - 1, 1),
+          lt: new Date(yearParam, monthParam, 1),
+        };
+      } else {
+        dateFilter = {
+          gte: new Date(yearParam, 0, 1),
+          lt: new Date(yearParam + 1, 0, 1),
+        };
+      }
+    }
+
+    const where: Prisma.ExpenseWhereInput = {
+      userId: user.id,
+      ...(dateFilter ? { date: dateFilter } : {}),
+      ...(search
+        ? {
+            OR: [
+              { title: { contains: search, mode: 'insensitive' } },
+              { description: { contains: search, mode: 'insensitive' } },
+              { category: { contains: search, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    };
+
     const [expenses, totalRecords] = await Promise.all([
       prisma.expense.findMany({
-        where: { userId: user.id },
+        where,
         orderBy,
         skip,
         take: limit,
         select: expenseSelect,
       }),
-      prisma.expense.count({
-        where: { userId: user.id },
-      }),
+      prisma.expense.count({ where }),
     ]);
 
     const totalPages = Math.ceil(totalRecords / limit);

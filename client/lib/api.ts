@@ -139,12 +139,19 @@ export function getDashboard(userId: number) {
   return requestJson<DashboardData>(`/expenses/dashboard?userId=${userId}`);
 }
 
+export interface ExpenseFilters {
+  year?: number;
+  month?: number;
+  search?: string;
+}
+
 export function getExpenses(
   userId: number,
   page: number,
   limit: number,
   sortBy: ExpenseSortBy,
   sortOrder: SortOrder,
+  filters: ExpenseFilters = {},
 ) {
   const params = new URLSearchParams({
     userId: String(userId),
@@ -154,7 +161,23 @@ export function getExpenses(
     sortOrder,
   });
 
+  if (filters.year) {
+    params.set("year", String(filters.year));
+  }
+  if (filters.month) {
+    params.set("month", String(filters.month));
+  }
+  if (filters.search && filters.search.trim()) {
+    params.set("search", filters.search.trim());
+  }
+
   return requestJson<ExpenseListData>(`/expenses?${params.toString()}`);
+}
+
+export function getExpenseYears(userId: number) {
+  return requestJson<{ years: number[] }>(
+    `/expenses/years?userId=${userId}`,
+  );
 }
 
 export function updateExpense(id: number, data: UpdateExpenseInput) {
@@ -175,4 +198,40 @@ export function deleteExpense(id: number) {
   return requestJson<{ message: string }>(`/expenses/${id}`, {
     method: "DELETE",
   });
+}
+
+export type BudgetRanking = "excellent" | "ok" | "fair" | "bad";
+
+export interface BudgetCategoryEntry {
+  category: string;
+  amount: number;
+  percentage: number;
+}
+
+export interface BudgetAnalysis {
+  month: string;
+  budget: number | null;
+  spent: number;
+  remaining: number | null;
+  percentage: number | null;
+  ranking: BudgetRanking | null;
+  message: string | null;
+  transactionCount: number;
+  dailyAverage: number;
+  daysInMonth: number;
+  daysElapsed: number;
+  categoryBreakdown: BudgetCategoryEntry[];
+}
+
+export function getBudget(userId: number, month: string) {
+  return requestJson<BudgetAnalysis>(
+    `/budget?userId=${userId}&month=${encodeURIComponent(month)}`,
+  );
+}
+
+export function setBudget(userId: number, month: string, amount: number) {
+  return postJson<{ id: number; userId: number; amount: number; month: string }>(
+    "/budget",
+    { userId, month, amount },
+  );
 }
