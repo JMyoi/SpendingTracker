@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import AppShell from "@/components/dashboard/AppShell";
 import CategoryDonutChart from "@/components/dashboard/CategoryDonutChart";
+import ImageImportAction from "@/components/dashboard/ImageImportAction";
 import ExpenseRow from "@/components/dashboard/ExpenseRow";
 import ImageImportModal from "@/components/dashboard/ImageImportModal";
 import MonthlyTrendChart from "@/components/dashboard/MonthlyTrendChart";
@@ -300,23 +301,7 @@ export default function DashboardPage() {
             <span className="text-2xl leading-none">+</span>
             Add Expense
           </button>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setIsImportingImage(true)}
-              className="inline-flex items-center justify-center gap-3 rounded-2xl border border-amber-200 bg-white px-6 py-4 text-lg font-black text-amber-700 shadow-sm transition-colors hover:bg-amber-50"
-            >
-              <span className="text-2xl leading-none">+</span>
-              Import from Image
-            </button>
-            <span
-              title="Upload receipts, bank statements, or transaction screenshots to extract expenses for review."
-              aria-label="Upload receipts, bank statements, or transaction screenshots to extract expenses for review."
-              className="flex h-8 w-8 items-center justify-center rounded-full border border-stone-200 bg-white text-sm font-black text-stone-500 shadow-sm"
-            >
-              ?
-            </span>
-          </div>
+          <ImageImportAction onImport={() => setIsImportingImage(true)} />
         </div>
       </section>
 

@@ -221,7 +221,8 @@ const transactionExtractionSchema = {
             anyOf: [
               {
                 type: "string",
-                description: "Transaction date in YYYY-MM-DD format.",
+                description:
+                  "Transaction date in YYYY-MM-DD format. If the visible date has month and day but no year, use the current year provided in the prompt.",
               },
               { type: "null" },
             ],
@@ -263,16 +264,21 @@ router.post("/", async (req, res) => {
     const mimeType = await getValidatedImageMimeType(req.file.buffer);
     const openai = createOpenAIClient();
     const base64Image = req.file.buffer.toString("base64");
+    const currentYear = new Date().getFullYear();
 
     const prompt = [
       "You are a financial data extraction assistant.",
       "Analyze this image, which may be a receipt, bank statement, or transaction screenshot from a bank, credit card, payment app, or store.",
+      `The current year is ${currentYear}.`,
       "",
       "Extract every clearly visible individual purchase or transaction.",
       "",
       "Rules:",
       "- Do not guess amounts, dates, merchants, or payees.",
       "- Amounts must be positive numbers with no currency symbols.",
+      `- If a visible transaction date includes a month and day but no year, use ${currentYear} as the year.`,
+      "- If a visible transaction date includes an explicit year, preserve that year.",
+      "- If a transaction date does not have a readable month and day, use null.",
       "- If a transaction is a refund or credit, include it only if clearly visible and note that in description.",
       "- Skip bank fees such as overdraft fees or monthly service fees unless they clearly look like real purchases.",
       "- Use the merchant or payee name as title, not a generic label.",
