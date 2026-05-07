@@ -18,6 +18,25 @@ const expenseSelect = {
 const sortFields = ['date', 'title', 'category', 'amount'] as const;
 type SortField = (typeof sortFields)[number];
 
+const allowedCategories = [
+  'Food',
+  'Food & Dining',
+  'Groceries',
+  'Transportation',
+  'Shopping',
+  'Entertainment',
+  'Bills',
+  'Bills & Utilities',
+  'Health',
+  'Healthcare',
+  'Personal Care',
+  'Education',
+  'Travel',
+  'Subscriptions',
+  'Other',
+] as const;
+type ExpenseCategory = (typeof allowedCategories)[number];
+
 function getQueryValue(value: unknown) {
   return Array.isArray(value) ? value[0] : value;
 }
@@ -40,6 +59,26 @@ function parsePositiveInteger(value: unknown, fallback?: number) {
 
 function roundMoney(amount: number) {
   return Number(amount.toFixed(2));
+}
+
+function isExpenseCategory(value: unknown): value is ExpenseCategory {
+  return (
+    typeof value === 'string' &&
+    allowedCategories.includes(value as ExpenseCategory)
+  );
+}
+
+function parseExpenseDate(value: unknown) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return null;
+  }
+
+  const parsedDate = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(parsedDate.getTime())) {
+    return null;
+  }
+
+  return parsedDate;
 }
 
 async function findUserByQueryId(userId: unknown) {
@@ -433,6 +472,109 @@ router.post('/', async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to create expense' });
+  }
+});
+
+// POST /expenses/bulk
+router.post('/bulk', async (req, res) => {
+  try {
+    const { userId, expenses } = req.body;
+    const parsedUserId = Number(userId);
+
+    if (!Number.isInteger(parsedUserId) || parsedUserId <= 0) {
+      return res.status(400).json({ error: 'userId must be a positive integer' });
+    }
+
+    if (!Array.isArray(expenses) || expenses.length === 0) {
+      return res.status(400).json({ error: 'expenses must be a non-empty array' });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: parsedUserId },
+    });
+
+    if (!user) {
+      return res.status(400).json({ error: 'User not found' });
+    }
+
+    const normalizedExpenses: {
+      userId: number;
+      title: string;
+      amount: number;
+      category: ExpenseCategory;
+      date: Date;
+      description?: string;
+    }[] = [];
+
+    for (const [index, expense] of expenses.entries()) {
+      if (!expense || typeof expense !== 'object') {
+        return res.status(400).json({
+          error: `Expense at index ${index} must be an object`,
+        });
+      }
+
+      const rawExpense = expense as Record<string, unknown>;
+      const title =
+        typeof rawExpense.title === 'string' ? rawExpense.title.trim() : '';
+      const amount = Number(rawExpense.amount);
+      const category = rawExpense.category;
+      const date = parseExpenseDate(rawExpense.date);
+      const description =
+        typeof rawExpense.description === 'string'
+          ? rawExpense.description.trim()
+          : undefined;
+
+      if (!title) {
+        return res.status(400).json({
+          error: `Expense at index ${index} is missing title`,
+        });
+      }
+
+      if (!Number.isFinite(amount) || amount <= 0) {
+        return res.status(400).json({
+          error: `Expense at index ${index} must have a positive amount`,
+        });
+      }
+
+      if (!isExpenseCategory(category)) {
+        return res.status(400).json({
+          error: `Expense at index ${index} has an invalid category`,
+        });
+      }
+
+      if (!date) {
+        return res.status(400).json({
+          error: `Expense at index ${index} must have a date in YYYY-MM-DD format`,
+        });
+      }
+
+      normalizedExpenses.push({
+        userId: user.id,
+        title,
+        amount: parseFloat(amount.toFixed(2)),
+        category,
+        date,
+        description,
+      });
+    }
+
+    const createdExpenses = await prisma.$transaction(
+      normalizedExpenses.map((expense) =>
+        prisma.expense.create({
+          data: expense,
+          select: expenseSelect,
+        }),
+      ),
+    );
+
+    res.json({
+      message: 'Expenses created successfully',
+      count: createdExpenses.length,
+      expenses: createdExpenses,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to create expenses' });
   }
 });
 
