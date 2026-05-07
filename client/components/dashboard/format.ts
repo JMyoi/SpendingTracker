@@ -15,6 +15,7 @@ export const categories = [
   "Education",
   "Travel",
   "Subscriptions",
+  "Other",
 ];
 
 const categoryStyles: Record<string, string> = {
@@ -32,6 +33,7 @@ const categoryStyles: Record<string, string> = {
   Education: "bg-emerald-50 text-emerald-700",
   Travel: "bg-cyan-50 text-cyan-700",
   Subscriptions: "bg-stone-100 text-stone-600",
+  Other: "bg-amber-50 text-amber-700",
 };
 
 export function formatCurrency(amount: number) {
@@ -79,6 +81,7 @@ const categoryChartColors: Record<string, string> = {
   Education: "#047857",
   Travel: "#0e7490",
   Subscriptions: "#57534e",
+  Other: "#d97706",
 };
 
 export function getCategoryChartColor(category: string) {
@@ -100,6 +103,7 @@ const categoryEmojis: Record<string, string> = {
   Education: "🎓",
   Travel: "✈️",
   Subscriptions: "📺",
+  Other: "💰",
 };
 
 export function getCategoryEmoji(category: string) {

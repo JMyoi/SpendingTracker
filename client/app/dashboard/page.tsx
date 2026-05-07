@@ -5,6 +5,7 @@ import Link from "next/link";
 import AppShell from "@/components/dashboard/AppShell";
 import CategoryDonutChart from "@/components/dashboard/CategoryDonutChart";
 import ExpenseRow from "@/components/dashboard/ExpenseRow";
+import ImageImportModal from "@/components/dashboard/ImageImportModal";
 import MonthlyTrendChart from "@/components/dashboard/MonthlyTrendChart";
 import {
   categories,
@@ -186,6 +187,7 @@ export default function DashboardPage() {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isAddingExpense, setIsAddingExpense] = useState(false);
+  const [isImportingImage, setIsImportingImage] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [formError, setFormError] = useState("");
   const [form, setForm] = useState(defaultForm);
@@ -224,6 +226,11 @@ export default function DashboardPage() {
   function closeAddExpenseModal() {
     setIsAddingExpense(false);
     setFormError("");
+  }
+
+  function handleImageImportSaved() {
+    setIsImportingImage(false);
+    loadDashboard();
   }
 
   async function handleAddExpense(e: React.FormEvent) {
@@ -284,14 +291,33 @@ export default function DashboardPage() {
             {formatMonth()} . Here&apos;s your spending overview
           </p>
         </div>
-        <button
-          type="button"
-          onClick={openAddExpenseModal}
-          className="inline-flex items-center justify-center gap-3 rounded-2xl bg-amber-500 px-6 py-4 text-lg font-black text-white shadow-sm transition-colors hover:bg-amber-600"
-        >
-          <span className="text-2xl leading-none">+</span>
-          Add Expense
-        </button>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <button
+            type="button"
+            onClick={openAddExpenseModal}
+            className="inline-flex items-center justify-center gap-3 rounded-2xl bg-amber-500 px-6 py-4 text-lg font-black text-white shadow-sm transition-colors hover:bg-amber-600"
+          >
+            <span className="text-2xl leading-none">+</span>
+            Add Expense
+          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsImportingImage(true)}
+              className="inline-flex items-center justify-center gap-3 rounded-2xl border border-amber-200 bg-white px-6 py-4 text-lg font-black text-amber-700 shadow-sm transition-colors hover:bg-amber-50"
+            >
+              <span className="text-2xl leading-none">+</span>
+              Import from Image
+            </button>
+            <span
+              title="Upload receipts, bank statements, or transaction screenshots to extract expenses for review."
+              aria-label="Upload receipts, bank statements, or transaction screenshots to extract expenses for review."
+              className="flex h-8 w-8 items-center justify-center rounded-full border border-stone-200 bg-white text-sm font-black text-stone-500 shadow-sm"
+            >
+              ?
+            </span>
+          </div>
+        </div>
       </section>
 
       {error && (
@@ -476,6 +502,14 @@ export default function DashboardPage() {
             </form>
           </div>
         </div>
+      )}
+
+      {isImportingImage && (
+        <ImageImportModal
+          userId={user.id}
+          onClose={() => setIsImportingImage(false)}
+          onSaved={handleImageImportSaved}
+        />
       )}
     </AppShell>
   );

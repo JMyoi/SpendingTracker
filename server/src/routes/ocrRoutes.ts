@@ -5,13 +5,6 @@ import sharp from "sharp";
 
 const router = express.Router();
 
-const allowedMimeTypes = new Set([
-  "image/png",
-  "image/jpeg",
-  "image/webp",
-  "image/gif",
-]);
-
 const allowedCategories = [
   "Food",
   "Food & Dining",
@@ -56,13 +49,6 @@ const upload = multer({
   limits: {
     fileSize: 10 * 1024 * 1024,
   },
-  fileFilter: (_req, file, callback) => {
-    if (!allowedMimeTypes.has(file.mimetype)) {
-      return callback(new Error("Unsupported file type"));
-    }
-
-    callback(null, true);
-  },
 });
 
 function uploadReceipt(req: express.Request, res: express.Response) {
@@ -88,11 +74,34 @@ function createOpenAIClient() {
   });
 }
 
-async function isAnimatedGif(buffer: Buffer) {
+async function getValidatedImageMimeType(buffer: Buffer) {
   try {
     const metadata = await sharp(buffer, { animated: true }).metadata();
-    return (metadata.pages ?? 1) > 1;
-  } catch {
+    const formatToMimeType: Record<string, string> = {
+      gif: "image/gif",
+      jpeg: "image/jpeg",
+      png: "image/png",
+      webp: "image/webp",
+    };
+
+    if (!metadata.format || !formatToMimeType[metadata.format]) {
+      throw new Error("Unsupported image file");
+    }
+
+    if (metadata.format === "gif" && (metadata.pages ?? 1) > 1) {
+      throw new Error("Animated GIFs are not supported");
+    }
+
+    return formatToMimeType[metadata.format];
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      (error.message === "Unsupported image file" ||
+        error.message === "Animated GIFs are not supported")
+    ) {
+      throw error;
+    }
+
     throw new Error("Invalid image file");
   }
 }
@@ -251,14 +260,7 @@ router.post("/", async (req, res) => {
       });
     }
 
-    const mimeType = req.file.mimetype;
-
-    if (mimeType === "image/gif" && (await isAnimatedGif(req.file.buffer))) {
-      return res.status(400).json({
-        error: "Animated GIFs are not supported",
-      });
-    }
-
+    const mimeType = await getValidatedImageMimeType(req.file.buffer);
     const openai = createOpenAIClient();
     const base64Image = req.file.buffer.toString("base64");
 
@@ -336,20 +338,21 @@ router.post("/", async (req, res) => {
 
     if (
       error instanceof Error &&
-      error.message === "Unsupported file type"
+      (error.message === "Invalid image file" ||
+        error.message === "Unsupported image file")
     ) {
       return res.status(400).json({
         error:
-          "Unsupported file type. Please upload a PNG, JPEG, WEBP, or GIF image.",
+          "Unsupported file type. Please upload a PNG, JPEG, WEBP, or non-animated GIF image.",
       });
     }
 
     if (
       error instanceof Error &&
-      error.message === "Invalid image file"
+      error.message === "Animated GIFs are not supported"
     ) {
       return res.status(400).json({
-        error: "Invalid image file",
+        error: "Animated GIFs are not supported",
       });
     }
 
