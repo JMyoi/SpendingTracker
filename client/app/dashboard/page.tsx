@@ -3,15 +3,22 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import AppShell from "@/components/dashboard/AppShell";
+import CategoryDonutChart from "@/components/dashboard/CategoryDonutChart";
 import ExpenseRow from "@/components/dashboard/ExpenseRow";
+import MonthlyTrendChart from "@/components/dashboard/MonthlyTrendChart";
 import {
   categories,
   formatCurrency,
   formatMonth,
+  rankingStyles,
 } from "@/components/dashboard/format";
 import { useRequireUser } from "@/components/dashboard/useRequireUser";
-import type { CreateExpenseInput, DashboardData } from "@/lib/api";
-import { createExpense, getDashboard } from "@/lib/api";
+import type {
+  BudgetAnalysis,
+  CreateExpenseInput,
+  DashboardData,
+} from "@/lib/api";
+import { createExpense, getBudget, getDashboard } from "@/lib/api";
 
 const defaultForm = {
   title: "",
@@ -48,9 +55,134 @@ function StatCard({
   );
 }
 
+function BudgetStatusCard({ budget }: { budget: BudgetAnalysis | null }) {
+  const hasBudget = budget?.budget != null && budget.percentage != null;
+  const styles = hasBudget && budget.ranking ? rankingStyles[budget.ranking] : null;
+  const percentage = budget?.percentage ?? 0;
+  const remaining = budget?.remaining ?? 0;
+
+  return (
+    <div className="rounded-2xl border border-stone-100 bg-white p-6 shadow-sm">
+      <div className="flex items-start justify-between gap-6">
+        <p className="text-lg font-bold text-stone-500">Budget Status</p>
+        <span
+          className={`flex h-14 w-14 items-center justify-center rounded-2xl text-2xl ${
+            styles ? `${styles.pillBg} ${styles.pillText}` : "bg-stone-100 text-stone-400"
+          }`}
+        >
+          🎯
+        </span>
+      </div>
+
+      {hasBudget ? (
+        <>
+          <p className="mt-10 text-4xl font-black tracking-tight text-stone-950">
+            {percentage.toFixed(0)}%
+          </p>
+          <p className="mt-4 text-lg font-medium text-stone-400">
+            {remaining >= 0
+              ? `${formatCurrency(remaining)} remaining`
+              : `${formatCurrency(Math.abs(remaining))} over budget`}
+          </p>
+        </>
+      ) : (
+        <>
+          <p className="mt-10 text-4xl font-black tracking-tight text-stone-400">
+            Not set
+          </p>
+          <Link
+            href="/budget"
+            className="mt-4 inline-block text-lg font-bold text-indigo-600 hover:text-indigo-700"
+          >
+            Set a budget -&gt;
+          </Link>
+        </>
+      )}
+    </div>
+  );
+}
+
+function MonthlyBudgetBar({ budget }: { budget: BudgetAnalysis | null }) {
+  if (!budget) {
+    return null;
+  }
+
+  const monthName = formatMonth(
+    new Date(`${budget.month}-01T00:00:00`),
+  );
+
+  if (budget.budget == null) {
+    return (
+      <section className="mt-8 flex items-center justify-between gap-4 rounded-2xl border border-amber-200 bg-amber-50 px-6 py-5">
+        <div className="flex items-start gap-4">
+          <span className="mt-0.5 flex h-7 w-7 items-center justify-center rounded-full border-2 border-amber-500 text-base font-black text-amber-600">
+            !
+          </span>
+          <div>
+            <p className="text-lg font-black text-amber-800">
+              No Budget Set for {monthName}
+            </p>
+            <p className="mt-1 text-sm font-medium text-amber-700">
+              Set a budget to track your monthly spending performance.
+            </p>
+          </div>
+        </div>
+        <Link
+          href="/budget"
+          className="shrink-0 rounded-2xl bg-amber-500 px-5 py-3 text-sm font-black text-white shadow-sm hover:bg-amber-600"
+        >
+          Set Budget
+        </Link>
+      </section>
+    );
+  }
+
+  const styles = budget.ranking ? rankingStyles[budget.ranking] : rankingStyles.excellent;
+  const barWidth = Math.min(budget.percentage ?? 0, 100);
+
+  return (
+    <section className="mt-8 rounded-2xl border border-stone-100 bg-white p-6 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-2xl font-black text-stone-900">
+            Monthly Budget &ndash; {monthName}
+          </h2>
+          <p className="mt-1 text-sm font-medium text-stone-500">
+            {formatCurrency(budget.spent)} spent of {formatCurrency(budget.budget)} budget
+          </p>
+        </div>
+        <Link
+          href="/budget"
+          className="text-sm font-black text-indigo-600 hover:text-indigo-700"
+        >
+          View Details ↗
+        </Link>
+      </div>
+
+      <div className="mt-5 h-2.5 w-full overflow-hidden rounded-full bg-stone-100">
+        <div
+          className={`h-full rounded-full transition-all ${styles.barBg}`}
+          style={{ width: `${barWidth}%` }}
+        />
+      </div>
+      <div className="mt-3 flex items-center justify-between text-sm font-semibold text-stone-400">
+        <span>$0</span>
+        <span>{(budget.percentage ?? 0).toFixed(0)}% used</span>
+        <span>{formatCurrency(budget.budget)}</span>
+      </div>
+    </section>
+  );
+}
+
+function currentMonthKey() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
 export default function DashboardPage() {
   const { user, isCheckingUser } = useRequireUser();
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
+  const [budget, setBudget] = useState<BudgetAnalysis | null>(null);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isAddingExpense, setIsAddingExpense] = useState(false);
@@ -64,9 +196,10 @@ export default function DashboardPage() {
     }
 
     setIsLoading(true);
-    getDashboard(user.id)
-      .then((data) => {
-        setDashboard(data);
+    Promise.all([getDashboard(user.id), getBudget(user.id, currentMonthKey())])
+      .then(([dashboardData, budgetData]) => {
+        setDashboard(dashboardData);
+        setBudget(budgetData);
         setError("");
       })
       .catch((error) => {
@@ -173,7 +306,7 @@ export default function DashboardPage() {
         </div>
       ) : dashboard ? (
         <>
-          <section className="mt-8 grid gap-5 md:grid-cols-2">
+          <section className="mt-8 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
             <StatCard
               title="Spent This Month"
               amount={dashboard.spentThisMonth.amount}
@@ -186,6 +319,20 @@ export default function DashboardPage() {
               detail={`${dashboard.totalExpenses.recordCount} all-time records`}
               icon="%"
             />
+            <BudgetStatusCard budget={budget} />
+          </section>
+
+          <MonthlyBudgetBar budget={budget} />
+
+          <section className="mt-8 grid gap-5 lg:grid-cols-3">
+            <div className="lg:col-span-2">
+              <MonthlyTrendChart
+                data={dashboard.monthlyTrend}
+                title="Monthly Spending Trend"
+                subtitle="Last 6 months"
+              />
+            </div>
+            <CategoryDonutChart data={dashboard.categoryBreakdown} />
           </section>
 
           <section className="mt-8 overflow-hidden rounded-2xl border border-stone-100 bg-white shadow-sm">

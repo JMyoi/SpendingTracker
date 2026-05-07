@@ -23,6 +23,17 @@ export interface Expense {
   updatedAt: string;
 }
 
+export interface MonthlyTrendPoint {
+  month: string;
+  label: string;
+  amount: number;
+}
+
+export interface CategoryBreakdownEntry {
+  category: string;
+  amount: number;
+}
+
 export interface DashboardData {
   spentThisMonth: {
     amount: number;
@@ -33,6 +44,8 @@ export interface DashboardData {
     recordCount: number;
   };
   recentExpenses: Expense[];
+  monthlyTrend: MonthlyTrendPoint[];
+  categoryBreakdown: CategoryBreakdownEntry[];
 }
 
 export type ExpenseSortBy = "date" | "title" | "category" | "amount";
@@ -40,6 +53,7 @@ export type SortOrder = "asc" | "desc";
 
 export interface ExpenseListData {
   expenses: Expense[];
+  filteredTotal: number;
   pagination: {
     page: number;
     limit: number;
@@ -126,12 +140,19 @@ export function getDashboard(userId: number) {
   return requestJson<DashboardData>(`/expenses/dashboard?userId=${userId}`);
 }
 
+export interface ExpenseFilters {
+  year?: number;
+  month?: number;
+  search?: string;
+}
+
 export function getExpenses(
   userId: number,
   page: number,
   limit: number,
   sortBy: ExpenseSortBy,
   sortOrder: SortOrder,
+  filters: ExpenseFilters = {},
 ) {
   const params = new URLSearchParams({
     userId: String(userId),
@@ -141,7 +162,57 @@ export function getExpenses(
     sortOrder,
   });
 
+  if (filters.year) {
+    params.set("year", String(filters.year));
+  }
+  if (filters.month) {
+    params.set("month", String(filters.month));
+  }
+  if (filters.search && filters.search.trim()) {
+    params.set("search", filters.search.trim());
+  }
+
   return requestJson<ExpenseListData>(`/expenses?${params.toString()}`);
+}
+
+export function getExpenseYears(userId: number) {
+  return requestJson<{ years: number[] }>(
+    `/expenses/years?userId=${userId}`,
+  );
+}
+
+export type ExpenseTrendGranularity = "year" | "month" | "day";
+
+export interface ExpenseTrendPoint {
+  key: string;
+  label: string;
+  amount: number;
+}
+
+export interface ExpenseTrendData {
+  granularity: ExpenseTrendGranularity;
+  points: ExpenseTrendPoint[];
+}
+
+export function getExpenseTrend(
+  userId: number,
+  filters: ExpenseFilters = {},
+) {
+  const params = new URLSearchParams({ userId: String(userId) });
+
+  if (filters.year) {
+    params.set("year", String(filters.year));
+  }
+  if (filters.month) {
+    params.set("month", String(filters.month));
+  }
+  if (filters.search && filters.search.trim()) {
+    params.set("search", filters.search.trim());
+  }
+
+  return requestJson<ExpenseTrendData>(
+    `/expenses/trend?${params.toString()}`,
+  );
 }
 
 export function updateExpense(id: number, data: UpdateExpenseInput) {
@@ -162,4 +233,67 @@ export function deleteExpense(id: number) {
   return requestJson<{ message: string }>(`/expenses/${id}`, {
     method: "DELETE",
   });
+}
+
+export type BudgetRanking = "excellent" | "ok" | "fair" | "bad";
+
+export interface BudgetCategoryEntry {
+  category: string;
+  amount: number;
+  percentage: number;
+}
+
+export interface BudgetAnalysis {
+  month: string;
+  budget: number | null;
+  spent: number;
+  remaining: number | null;
+  percentage: number | null;
+  ranking: BudgetRanking | null;
+  message: string | null;
+  transactionCount: number;
+  dailyAverage: number;
+  daysInMonth: number;
+  daysElapsed: number;
+  categoryBreakdown: BudgetCategoryEntry[];
+}
+
+export function getBudget(userId: number, month: string) {
+  return requestJson<BudgetAnalysis>(
+    `/budget?userId=${userId}&month=${encodeURIComponent(month)}`,
+  );
+}
+
+export function setBudget(userId: number, month: string, amount: number) {
+  return postJson<{ id: number; userId: number; amount: number; month: string }>(
+    "/budget",
+    { userId, month, amount },
+  );
+}
+
+export function getBudgetYears(userId: number) {
+  return requestJson<{ years: number[] }>(
+    `/budget/years?userId=${userId}`,
+  );
+}
+
+export interface BudgetComparisonMonth {
+  month: string;
+  label: string;
+  budget: number | null;
+  spent: number;
+}
+
+export interface BudgetComparisonData {
+  months: BudgetComparisonMonth[];
+}
+
+export function getBudgetComparison(userId: number, month?: string) {
+  const params = new URLSearchParams({ userId: String(userId) });
+  if (month) {
+    params.set("month", month);
+  }
+  return requestJson<BudgetComparisonData>(
+    `/budget/comparison?${params.toString()}`,
+  );
 }

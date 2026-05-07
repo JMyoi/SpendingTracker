@@ -54,6 +54,61 @@ async function findUserByQueryId(userId: unknown) {
   });
 }
 
+function buildExpenseFilter(query: Record<string, unknown>, userId: number) {
+  const yearParam = parsePositiveInteger(query.year);
+  const rawMonth = parsePositiveInteger(query.month);
+  const monthParam =
+    yearParam && rawMonth && rawMonth >= 1 && rawMonth <= 12 ? rawMonth : undefined;
+  const searchValue = getQueryValue(query.search);
+  const search = typeof searchValue === 'string' ? searchValue.trim() : '';
+
+  let dateFilter: { gte: Date; lt: Date } | undefined;
+  if (yearParam) {
+    if (monthParam) {
+      dateFilter = {
+        gte: new Date(yearParam, monthParam - 1, 1),
+        lt: new Date(yearParam, monthParam, 1),
+      };
+    } else {
+      dateFilter = {
+        gte: new Date(yearParam, 0, 1),
+        lt: new Date(yearParam + 1, 0, 1),
+      };
+    }
+  }
+
+  const where: Prisma.ExpenseWhereInput = {
+    userId,
+    ...(dateFilter ? { date: dateFilter } : {}),
+    ...(search
+      ? {
+          OR: [
+            { title: { contains: search, mode: 'insensitive' as const } },
+            { description: { contains: search, mode: 'insensitive' as const } },
+            { category: { contains: search, mode: 'insensitive' as const } },
+          ],
+        }
+      : {}),
+  };
+
+  return { where, yearParam, monthParam, search };
+}
+
+const monthShortLabels = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
+
 // GET /expenses/dashboard
 router.get('/dashboard', async (req, res) => {
   try {
@@ -70,8 +125,15 @@ router.get('/dashboard', async (req, res) => {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const sixMonthsAgoStart = new Date(now.getFullYear(), now.getMonth() - 5, 1);
 
-    const [spentThisMonth, totalExpenses, recentExpenses] = await Promise.all([
+    const [
+      spentThisMonth,
+      totalExpenses,
+      recentExpenses,
+      trendRows,
+      categoryRows,
+    ] = await Promise.all([
       prisma.expense.aggregate({
         where: {
           userId: user.id,
@@ -94,7 +156,52 @@ router.get('/dashboard', async (req, res) => {
         take: 10,
         select: expenseSelect,
       }),
+      prisma.expense.findMany({
+        where: {
+          userId: user.id,
+          date: {
+            gte: sixMonthsAgoStart,
+            lt: nextMonthStart,
+          },
+        },
+        select: { date: true, amount: true },
+      }),
+      prisma.expense.groupBy({
+        by: ['category'],
+        where: {
+          userId: user.id,
+          date: {
+            gte: monthStart,
+            lt: nextMonthStart,
+          },
+        },
+        _sum: { amount: true },
+      }),
     ]);
+
+    const monthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const trendBuckets = new Map<string, number>();
+    for (const row of trendRows) {
+      const key = `${row.date.getFullYear()}-${String(row.date.getMonth() + 1).padStart(2, '0')}`;
+      trendBuckets.set(key, (trendBuckets.get(key) ?? 0) + row.amount);
+    }
+    const monthlyTrend = Array.from({ length: 6 }, (_, offset) => {
+      const bucketDate = new Date(now.getFullYear(), now.getMonth() - 5 + offset, 1);
+      const key = `${bucketDate.getFullYear()}-${String(bucketDate.getMonth() + 1).padStart(2, '0')}`;
+      return {
+        month: key,
+        label: monthLabels[bucketDate.getMonth()],
+        amount: roundMoney(trendBuckets.get(key) ?? 0),
+      };
+    });
+
+    const categoryBreakdown = categoryRows
+      .map((row) => ({
+        category: row.category,
+        amount: roundMoney(row._sum.amount ?? 0),
+      }))
+      .filter((entry) => entry.amount > 0)
+      .sort((a, b) => b.amount - a.amount);
 
     res.json({
       spentThisMonth: {
@@ -106,10 +213,114 @@ router.get('/dashboard', async (req, res) => {
         recordCount: totalExpenses._count.id,
       },
       recentExpenses,
+      monthlyTrend,
+      categoryBreakdown,
     });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to fetch dashboard data' });
+  }
+});
+
+// GET /expenses/years
+router.get('/years', async (req, res) => {
+  try {
+    if (!req.query.userId) {
+      return res.status(400).json({ error: 'userId is required' });
+    }
+
+    const user = await findUserByQueryId(req.query.userId);
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const expenses = await prisma.expense.findMany({
+      where: { userId: user.id },
+      select: { date: true },
+    });
+
+    const years = Array.from(
+      new Set(expenses.map((expense) => expense.date.getFullYear())),
+    ).sort((a, b) => b - a);
+
+    res.json({ years });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to fetch expense years' });
+  }
+});
+
+// GET /expenses/trend
+router.get('/trend', async (req, res) => {
+  try {
+    if (!req.query.userId) {
+      return res.status(400).json({ error: 'userId is required' });
+    }
+
+    const user = await findUserByQueryId(req.query.userId);
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const { where, yearParam, monthParam } = buildExpenseFilter(
+      req.query as Record<string, unknown>,
+      user.id,
+    );
+
+    const rows = await prisma.expense.findMany({
+      where,
+      select: { date: true, amount: true },
+    });
+
+    let granularity: 'year' | 'month' | 'day';
+    let points: { key: string; label: string; amount: number }[];
+
+    if (yearParam && monthParam) {
+      granularity = 'day';
+      const daysInMonth = new Date(yearParam, monthParam, 0).getDate();
+      const totals = new Array<number>(daysInMonth).fill(0);
+      for (const row of rows) {
+        const day = row.date.getDate();
+        totals[day - 1] += row.amount;
+      }
+      points = totals.map((amount, index) => ({
+        key: `${yearParam}-${String(monthParam).padStart(2, '0')}-${String(index + 1).padStart(2, '0')}`,
+        label: String(index + 1),
+        amount: roundMoney(amount),
+      }));
+    } else if (yearParam) {
+      granularity = 'month';
+      const totals = new Array<number>(12).fill(0);
+      for (const row of rows) {
+        totals[row.date.getMonth()] += row.amount;
+      }
+      points = totals.map((amount, index) => ({
+        key: `${yearParam}-${String(index + 1).padStart(2, '0')}`,
+        label: monthShortLabels[index],
+        amount: roundMoney(amount),
+      }));
+    } else {
+      granularity = 'year';
+      const totals = new Map<number, number>();
+      for (const row of rows) {
+        const year = row.date.getFullYear();
+        totals.set(year, (totals.get(year) ?? 0) + row.amount);
+      }
+      points = Array.from(totals.entries())
+        .sort(([a], [b]) => a - b)
+        .map(([year, amount]) => ({
+          key: String(year),
+          label: String(year),
+          amount: roundMoney(amount),
+        }));
+    }
+
+    res.json({ granularity, points });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to fetch expense trend' });
   }
 });
 
@@ -144,25 +355,34 @@ router.get('/', async (req, res) => {
     const orderBy: Prisma.ExpenseOrderByWithRelationInput = { [sortBy]: sortOrder };
     const skip = (page - 1) * limit;
 
-    const [expenses, totalRecords] = await Promise.all([
+    const { where } = buildExpenseFilter(
+      req.query as Record<string, unknown>,
+      user.id,
+    );
+
+    const [expenses, totalRecords, sumAggregate] = await Promise.all([
       prisma.expense.findMany({
-        where: { userId: user.id },
+        where,
         orderBy,
         skip,
         take: limit,
         select: expenseSelect,
       }),
-      prisma.expense.count({
-        where: { userId: user.id },
+      prisma.expense.count({ where }),
+      prisma.expense.aggregate({
+        where,
+        _sum: { amount: true },
       }),
     ]);
 
     const totalPages = Math.ceil(totalRecords / limit);
     const showingFrom = totalRecords === 0 ? 0 : skip + 1;
     const showingTo = Math.min(skip + expenses.length, totalRecords);
+    const filteredTotal = roundMoney(sumAggregate._sum.amount ?? 0);
 
     res.json({
       expenses,
+      filteredTotal,
       pagination: {
         page,
         limit,
@@ -215,6 +435,8 @@ router.post('/', async (req, res) => {
     res.status(500).json({ error: 'Failed to create expense' });
   }
 });
+
+
 // DELETE /expenses/:id
 router.delete('/:id', async (req, res) => {
   try {
@@ -242,6 +464,7 @@ router.delete('/:id', async (req, res) => {
     res.status(500).json({ error: 'Failed to delete expense' });
   }
 });
+
 // PUT /expenses/:id
 router.put('/:id', async (req, res) => {
   try {
