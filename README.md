@@ -4,6 +4,7 @@ A full-stack spending tracker built with the PERN stack + Next.js.
 
 **Stack:** PostgreSQL · Express · React (Next.js 14) · Node.js · Prisma · Tailwind CSS · TypeScript
 
+Demo Video: https://www.loom.com/share/4a2870ca3ea74b238e39327df3fa84c3
 ---
 
 ## Project Structure
