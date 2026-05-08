@@ -29,3 +29,9 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+
+#node_modules/
+.next/
+.env
+
+AGENTS.md

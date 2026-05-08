@@ -1,0 +1,99 @@
+Requirements Analysis
+
+1. Project Overview 
+Project Title: 
+Web-Based Personal Expense Tracking System
+Description: 
+This project aims to develop a web-based application that allows users to record, manage, and review their daily expenses. The system helps users organize their spending into categories and provides a simple way to monitor financial habits.
+
+2. Problem Statement
+Many individuals do not actively track their daily expenses, making it difficult to manage personal finances effectively. Without a clear overview of spending habits, users may overspend or fail to identify unnecessary expenses.
+
+3. Objectives
+The objective of this project is to design and implement a user-friendly expense tracking system that enables users to:
+•	Record daily expenses 
+•	Categorize spending 
+•	View and manage expense history 
+•	Monitor total spending 
+•	Create a budget for how much they can spend per month and give an analysis of how well they did on the budget on a given month.
+
+4. Functional Requirements
+The system shall provide the following functionalities:
+User Management
+•	The system shall allow users to register an account. 
+•	The system shall allow users to log in securely. 
+•	The system shall maintain user-specific data. 
+Expense Management
+•	The system shall allow users to add new expense records. 
+•	The system shall allow users to edit existing expense records. 
+•	The system shall allow users to delete expense records. 
+•	The system shall allow users to view a list of all expenses. 
+Categorization
+•	The system shall allow users to assign a category to each expense (e.g., food, transportation, shopping). 
+Summary
+•	The system shall display the total amount of expenses. 
+•	The system shall provide a summary of expenses by category (basic level). 
+
+5. Non-Functional Requirements
+The system should meet the following non-functional requirements:
+•	Usability: The interface should be simple and easy to use. 
+•	Performance: The system should respond quickly to user requests. 
+•	Reliability: The system should store and retrieve data accurately. 
+•	Security: User data (such as login information) should be protected. 
+•	Maintainability: The system should be structured in a way that allows future improvements. 
+
+6. Use Cases
+Use Case 1: User Registration
+•	User enters username, email, and password 
+•	System creates a new account 
+Use Case 2: User Login
+•	User enters credentials 
+•	System verifies and grants access 
+Use Case 3: Add Expense
+•	User inputs amount, category, date, and description 
+•	System saves the expense 
+Use Case 4: View Expenses
+•	User requests expense list 
+•	System displays all stored expenses 
+Use Case 5: Edit Expense
+•	User selects an existing expense 
+•	User modifies details 
+•	System updates the record 
+Use Case 6: Delete Expense
+•	User selects an expense 
+•	System removes the record 
+
+7. Scope
+In Scope (Must-Have Features)
+•	User registration and login 
+•	Add, edit, delete expenses 
+•	View expense list 
+•	Basic categorization 
+•	Total expense summary 
+Out of Scope (Future Improvements)
+•	Advanced data visualization (charts/graphs) 
+•	Budget planning and alerts 
+•	Mobile application 
+•	Multi-user collaboration 
+•	Integration with bank accounts 
+
+
+
+
+8. Technology Stack
+The project is planned to use the following technology stack:
+Language
+•	TypeScript
+Frontend
+•	React  
+•	Next.js 
+•	tailwind CSS 
+Backend
+•	Node.js (JavaScript runtime environment) 
+•	Express.js (Web framework for Node.js) 
+Database
+•	Prisma, PostgreSQL ORM (Relational database management system) 
+Development Tools
+•	Visual Studio Code (Code editor) 
+•	GitHub (Version control and collaboration platform)
+

@@ -80,3 +80,45 @@ Health check: `GET http://localhost:5000/api/health` → `{ "status": "ok" }`
 | `server/` | `npm run dev` | Express dev server (nodemon) |
 | `server/` | `npm run build` | Compile TypeScript |
 | `server/` | `npx prisma studio` | Open Prisma Studio |
+
+## Backend API
+
+### Base URL
+http://localhost:5000
+
+---
+
+### User APIs
+
+#### Register
+POST /users/register
+
+#### Login
+POST /users/login
+
+---
+
+### Expense APIs
+
+#### Get Expenses
+GET /expenses?userId=1
+
+#### Create Expense
+POST /expenses
+
+#### Update Expense
+PUT /expenses/:id
+
+#### Delete Expense
+DELETE /expenses/:id
+
+## Additional Features
+
+#### Set or Update Budget
+POST /budget
+
+#### Get Budget
+GET /budget?userId=1&month=2026-04
+
+#### Scan Receipt (OCR)
+POST /ocr
