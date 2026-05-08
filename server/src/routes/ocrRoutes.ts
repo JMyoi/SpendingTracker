@@ -25,6 +25,14 @@ const allowedCategories = [
 
 type TransactionCategory = (typeof allowedCategories)[number];
 
+const canonicalCategoryAliases: Partial<
+  Record<TransactionCategory, TransactionCategory>
+> = {
+  Food: "Food & Dining",
+  Bills: "Bills & Utilities",
+  Health: "Healthcare",
+};
+
 type SourceType =
   | "receipt"
   | "bank_statement"
@@ -142,7 +150,8 @@ function normalizeCategory(value: unknown): TransactionCategory {
     typeof value === "string" &&
     allowedCategories.includes(value as TransactionCategory)
   ) {
-    return value as TransactionCategory;
+    const category = value as TransactionCategory;
+    return canonicalCategoryAliases[category] ?? category;
   }
 
   return "Other";
@@ -230,6 +239,8 @@ const transactionExtractionSchema = {
           category: {
             type: "string",
             enum: allowedCategories,
+            description:
+              "Best matching expense category. Infer from merchant/payee/title and visible context when the image does not show a category. Prefer Food & Dining, Bills & Utilities, and Healthcare over duplicate legacy labels Food, Bills, and Health. Use Other only when no reasonable category can be inferred.",
           },
           description: {
             type: "string",
@@ -283,7 +294,24 @@ router.post("/", async (req, res) => {
       "- Skip bank fees such as overdraft fees or monthly service fees unless they clearly look like real purchases.",
       "- Use the merchant or payee name as title, not a generic label.",
       "- Use null for date when no transaction date is clearly visible.",
+      "- Images usually will not include category labels. Infer the best category from merchant, payee, title, and visible context.",
+      "- Use Other only when no reasonable category can be inferred.",
+      "- Prefer canonical category names: Food & Dining, Bills & Utilities, and Healthcare instead of Food, Bills, and Health.",
       "- If no readable transactions exist, return an empty transactions array and source_type unknown.",
+      "",
+      "Category guide:",
+      "- Food & Dining: restaurants, cafes, fast food, takeout, delivery, bakeries, coffee shops.",
+      "- Groceries: grocery stores, supermarkets, food markets, wholesale food purchases.",
+      "- Transportation: gas, parking, transit, rideshare, taxis, car services, tolls, vehicle maintenance.",
+      "- Shopping: retail stores, online stores, clothing, electronics, home goods, general merchandise.",
+      "- Bills & Utilities: phone, internet, electricity, water, rent, insurance, utilities.",
+      "- Subscriptions: recurring digital services, streaming, apps, memberships, software plans.",
+      "- Healthcare: doctors, pharmacies, dental, vision, medical services, prescriptions.",
+      "- Personal Care: haircuts, cosmetics, salons, spas, hygiene, grooming.",
+      "- Entertainment: movies, games, concerts, events, hobbies, amusement.",
+      "- Education: school, books, courses, tuition, training, learning materials.",
+      "- Travel: hotels, flights, luggage, vacation transport, tourist expenses.",
+      "- Other: only when the merchant/payee/title is too ambiguous for the categories above.",
     ].join("\n");
 
     const response = await openai.chat.completions.create({
