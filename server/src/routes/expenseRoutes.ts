@@ -68,13 +68,35 @@ function isExpenseCategory(value: unknown): value is ExpenseCategory {
   );
 }
 
+function calendarDate(year: number, monthIndex: number, day = 1) {
+  return new Date(Date.UTC(year, monthIndex, day));
+}
+
+function getCalendarYear(date: Date) {
+  return date.getUTCFullYear();
+}
+
+function getCalendarMonthIndex(date: Date) {
+  return date.getUTCMonth();
+}
+
+function getCalendarDay(date: Date) {
+  return date.getUTCDate();
+}
+
 function parseExpenseDate(value: unknown) {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     return null;
   }
 
-  const parsedDate = new Date(`${value}T00:00:00.000Z`);
-  if (Number.isNaN(parsedDate.getTime())) {
+  const [year, month, day] = value.split('-').map(Number);
+  const parsedDate = calendarDate(year, month - 1, day);
+  if (
+    Number.isNaN(parsedDate.getTime()) ||
+    parsedDate.getUTCFullYear() !== year ||
+    parsedDate.getUTCMonth() !== month - 1 ||
+    parsedDate.getUTCDate() !== day
+  ) {
     return null;
   }
 
@@ -105,13 +127,13 @@ function buildExpenseFilter(query: Record<string, unknown>, userId: number) {
   if (yearParam) {
     if (monthParam) {
       dateFilter = {
-        gte: new Date(yearParam, monthParam - 1, 1),
-        lt: new Date(yearParam, monthParam, 1),
+        gte: calendarDate(yearParam, monthParam - 1),
+        lt: calendarDate(yearParam, monthParam),
       };
     } else {
       dateFilter = {
-        gte: new Date(yearParam, 0, 1),
-        lt: new Date(yearParam + 1, 0, 1),
+        gte: calendarDate(yearParam, 0),
+        lt: calendarDate(yearParam + 1, 0),
       };
     }
   }
@@ -162,9 +184,11 @@ router.get('/dashboard', async (req, res) => {
     }
 
     const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-    const sixMonthsAgoStart = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+    const currentYear = now.getFullYear();
+    const currentMonthIndex = now.getMonth();
+    const monthStart = calendarDate(currentYear, currentMonthIndex);
+    const nextMonthStart = calendarDate(currentYear, currentMonthIndex + 1);
+    const sixMonthsAgoStart = calendarDate(currentYear, currentMonthIndex - 5);
 
     const [
       spentThisMonth,
@@ -221,15 +245,16 @@ router.get('/dashboard', async (req, res) => {
     const monthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const trendBuckets = new Map<string, number>();
     for (const row of trendRows) {
-      const key = `${row.date.getFullYear()}-${String(row.date.getMonth() + 1).padStart(2, '0')}`;
+      const key = `${getCalendarYear(row.date)}-${String(getCalendarMonthIndex(row.date) + 1).padStart(2, '0')}`;
       trendBuckets.set(key, (trendBuckets.get(key) ?? 0) + row.amount);
     }
     const monthlyTrend = Array.from({ length: 6 }, (_, offset) => {
-      const bucketDate = new Date(now.getFullYear(), now.getMonth() - 5 + offset, 1);
-      const key = `${bucketDate.getFullYear()}-${String(bucketDate.getMonth() + 1).padStart(2, '0')}`;
+      const bucketDate = calendarDate(currentYear, currentMonthIndex - 5 + offset);
+      const bucketMonthIndex = getCalendarMonthIndex(bucketDate);
+      const key = `${getCalendarYear(bucketDate)}-${String(bucketMonthIndex + 1).padStart(2, '0')}`;
       return {
         month: key,
-        label: monthLabels[bucketDate.getMonth()],
+        label: monthLabels[bucketMonthIndex],
         amount: roundMoney(trendBuckets.get(key) ?? 0),
       };
     });
@@ -280,7 +305,7 @@ router.get('/years', async (req, res) => {
     });
 
     const years = Array.from(
-      new Set(expenses.map((expense) => expense.date.getFullYear())),
+      new Set(expenses.map((expense) => getCalendarYear(expense.date))),
     ).sort((a, b) => b - a);
 
     res.json({ years });
@@ -318,10 +343,10 @@ router.get('/trend', async (req, res) => {
 
     if (yearParam && monthParam) {
       granularity = 'day';
-      const daysInMonth = new Date(yearParam, monthParam, 0).getDate();
+      const daysInMonth = getCalendarDay(calendarDate(yearParam, monthParam, 0));
       const totals = new Array<number>(daysInMonth).fill(0);
       for (const row of rows) {
-        const day = row.date.getDate();
+        const day = getCalendarDay(row.date);
         totals[day - 1] += row.amount;
       }
       points = totals.map((amount, index) => ({
@@ -333,7 +358,7 @@ router.get('/trend', async (req, res) => {
       granularity = 'month';
       const totals = new Array<number>(12).fill(0);
       for (const row of rows) {
-        totals[row.date.getMonth()] += row.amount;
+        totals[getCalendarMonthIndex(row.date)] += row.amount;
       }
       points = totals.map((amount, index) => ({
         key: `${yearParam}-${String(index + 1).padStart(2, '0')}`,
@@ -344,7 +369,7 @@ router.get('/trend', async (req, res) => {
       granularity = 'year';
       const totals = new Map<number, number>();
       for (const row of rows) {
-        const year = row.date.getFullYear();
+        const year = getCalendarYear(row.date);
         totals.set(year, (totals.get(year) ?? 0) + row.amount);
       }
       points = Array.from(totals.entries())
@@ -454,13 +479,18 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'User not found' });
     }
 
+    const parsedDate = parseExpenseDate(date);
+    if (!parsedDate) {
+      return res.status(400).json({ error: 'date must be in YYYY-MM-DD format' });
+    }
+
     const newExpense = await prisma.expense.create({
       data: {
         userId: Number(userId),
         title,
         amount: parseFloat(amount),
         category,
-        date: new Date(date),
+        date: parsedDate,
         description,
       },
     });
@@ -622,6 +652,15 @@ router.put('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Expense not found' });
     }
 
+    let parsedDate: Date | undefined;
+    if (date) {
+      const nextDate = parseExpenseDate(date);
+      if (!nextDate) {
+        return res.status(400).json({ error: 'date must be in YYYY-MM-DD format' });
+      }
+      parsedDate = nextDate;
+    }
+
     // 2. 更新
     const updatedExpense = await prisma.expense.update({
       where: { id: Number(id) },
@@ -629,7 +668,7 @@ router.put('/:id', async (req, res) => {
         title,
         amount: amount ? parseFloat(amount) : undefined,
         category,
-        date: date ? new Date(date) : undefined,
+        date: parsedDate,
         description,
       },
     });

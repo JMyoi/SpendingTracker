@@ -43,12 +43,21 @@ export function formatCurrency(amount: number) {
   }).format(amount);
 }
 
+function toCalendarDateParts(date: string) {
+  const dateOnly = date.includes("T") ? date.slice(0, 10) : date;
+  const [year, month, day] = dateOnly.split("-").map(Number);
+  return { year, month, day };
+}
+
 export function formatDate(date: string) {
+  const { year, month, day } = toCalendarDateParts(date);
+
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
-  }).format(new Date(date));
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(year, month - 1, day)));
 }
 
 export function formatMonth(date = new Date()) {
@@ -59,7 +68,7 @@ export function formatMonth(date = new Date()) {
 }
 
 export function toDateInputValue(date: string) {
-  return new Date(date).toISOString().slice(0, 10);
+  return date.includes("T") ? date.slice(0, 10) : date;
 }
 
 export function getCategoryClass(category: string) {

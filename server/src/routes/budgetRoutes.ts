@@ -9,6 +9,18 @@ function roundMoney(amount: number) {
   return Number(amount.toFixed(2));
 }
 
+function calendarDate(year: number, monthIndex: number, day = 1) {
+  return new Date(Date.UTC(year, monthIndex, day));
+}
+
+function getCalendarYear(date: Date) {
+  return date.getUTCFullYear();
+}
+
+function getCalendarMonthIndex(date: Date) {
+  return date.getUTCMonth();
+}
+
 function rankingForPercentage(percentage: number): {
   ranking: Ranking;
   message: string;
@@ -132,16 +144,16 @@ router.get("/comparison", async (req, res) => {
 
     const windowOffsets = [-3, -2, -1, 0, 1, 2, 3];
     const windowMonths = windowOffsets.map((offset) => {
-      const date = new Date(centerYear, centerMonthIndex + offset, 1);
-      const year = date.getFullYear();
-      const monthIndex = date.getMonth();
+      const date = calendarDate(centerYear, centerMonthIndex + offset);
+      const year = getCalendarYear(date);
+      const monthIndex = getCalendarMonthIndex(date);
       return {
         year,
         monthIndex,
         key: `${year}-${String(monthIndex + 1).padStart(2, "0")}`,
         label: monthShortLabels[monthIndex],
-        startDate: new Date(year, monthIndex, 1),
-        endDate: new Date(year, monthIndex + 1, 1),
+        startDate: calendarDate(year, monthIndex),
+        endDate: calendarDate(year, monthIndex + 1),
       };
     });
 
@@ -173,8 +185,8 @@ router.get("/comparison", async (req, res) => {
 
     const spentByMonth = new Map<string, number>();
     for (const row of expenseRows) {
-      const key = `${row.date.getFullYear()}-${String(
-        row.date.getMonth() + 1,
+      const key = `${getCalendarYear(row.date)}-${String(
+        getCalendarMonthIndex(row.date) + 1,
       ).padStart(2, "0")}`;
       spentByMonth.set(key, (spentByMonth.get(key) ?? 0) + row.amount);
     }
@@ -232,7 +244,7 @@ router.get("/years", async (req, res) => {
     const yearSet = new Set<number>();
     yearSet.add(new Date().getFullYear());
     for (const row of expenseRows) {
-      yearSet.add(row.date.getFullYear());
+      yearSet.add(getCalendarYear(row.date));
     }
     for (const row of budgetRows) {
       const year = Number(row.month.split("-")[0]);
@@ -267,8 +279,8 @@ router.get("/", async (req, res) => {
     }
 
     const [yearPart, monthPart] = monthString.split("-").map(Number);
-    const startDate = new Date(yearPart, monthPart - 1, 1);
-    const endDate = new Date(yearPart, monthPart, 1);
+    const startDate = calendarDate(yearPart, monthPart - 1);
+    const endDate = calendarDate(yearPart, monthPart);
 
     const [budget, expenseAggregate, categoryRows] = await Promise.all([
       prisma.budget.findUnique({

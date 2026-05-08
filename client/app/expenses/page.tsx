@@ -47,11 +47,20 @@ const MONTH_OPTIONS: { value: number; label: string }[] = [
   { value: 11, label: "November" },
   { value: 12, label: "December" },
 ];
+
+function todayInputValue() {
+  const today = new Date();
+  return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(
+    2,
+    "0",
+  )}-${String(today.getDate()).padStart(2, "0")}`;
+}
+
 const defaultForm = {
   title: "",
   amount: "",
   category: "Food & Dining",
-  date: new Date().toISOString().slice(0, 10),
+  date: todayInputValue(),
   description: "",
 };
 
