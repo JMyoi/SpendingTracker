@@ -20,7 +20,7 @@ export default function LoginPage() {
     setIsSubmitting(true);
 
     try {
-      const data = await loginUser(email, password);
+      const data = await loginUser(email.trim(), password);
       storeCurrentUser(data.user);
       router.push("/dashboard");
     } catch (error) {
