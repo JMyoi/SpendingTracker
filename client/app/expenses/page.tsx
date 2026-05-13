@@ -15,7 +15,6 @@ import {
 } from "@/components/dashboard/format";
 import { useRequireUser } from "@/components/dashboard/useRequireUser";
 import type {
-  CreateExpenseInput,
   Expense,
   ExpenseListData,
   ExpenseSortBy,
@@ -306,11 +305,7 @@ export default function ExpensesPage() {
       if (editingExpense) {
         await updateExpense(editingExpense.id, payload);
       } else if (user) {
-        const createPayload: CreateExpenseInput = {
-          ...payload,
-          userId: user.id,
-        };
-        await createExpense(createPayload);
+        await createExpense(payload);
         setPage(1);
         setSortBy("date");
         setSortOrder("desc");

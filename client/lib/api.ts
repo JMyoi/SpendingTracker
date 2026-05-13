@@ -72,9 +72,7 @@ export interface UpdateExpenseInput {
   description?: string;
 }
 
-export interface CreateExpenseInput extends UpdateExpenseInput {
-  userId: number;
-}
+export type CreateExpenseInput = UpdateExpenseInput;
 
 export type TransactionImageSourceType =
   | "receipt"
@@ -96,7 +94,10 @@ export interface TransactionImageScanResult {
 }
 
 async function requestJson<T>(path: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, options);
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...options,
+    credentials: "include",
+  });
   const data = await response.json().catch(() => null);
 
   if (!response.ok) {
@@ -248,13 +249,10 @@ export function createExpense(data: CreateExpenseInput) {
   return postJson<{ message: string; expense: Expense }>("/expenses", data);
 }
 
-export function createExpensesBulk(
-  userId: number,
-  expenses: UpdateExpenseInput[],
-) {
+export function createExpensesBulk(expenses: UpdateExpenseInput[]) {
   return postJson<{ message: string; count: number; expenses: Expense[] }>(
     "/expenses/bulk",
-    { userId, expenses },
+    { expenses },
   );
 }
 

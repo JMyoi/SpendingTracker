@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import prisma from '../prisma';
 import bcrypt from 'bcrypt';
+import { createSession } from '../session';
 
 const router = Router();
 
@@ -104,6 +105,8 @@ router.post('/register', async (req, res) => {
       },
     });
 
+    createSession(res, newUser.id);
+
     res.json({
       message: 'User registered successfully',
       user: {
@@ -151,6 +154,8 @@ router.post('/login', async (req, res) => {
     }
 
     // 4. 返回成功
+    createSession(res, user.id);
+
     res.json({
       message: 'Login successful',
       user: {

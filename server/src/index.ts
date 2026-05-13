@@ -10,7 +10,9 @@ import ocrRoutes from './routes/ocrRoutes';
 const app = express();
 const PORT = Number(process.env.PORT) || 5000;
 
-app.use(cors());
+const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN ?? 'http://localhost:3000';
+
+app.use(cors({ origin: CLIENT_ORIGIN, credentials: true }));
 app.use(express.json());
 app.use("/budget", budgetRoutes);
 app.use("/ocr", ocrRoutes);
