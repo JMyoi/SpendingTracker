@@ -7,6 +7,36 @@ import Input from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
 import { registerUser, storeCurrentUser } from "@/lib/api";
 
+const COMMON_PASSWORD_DENYLIST = new Set([
+  "password",
+  "password123",
+  "qwerty123",
+  "letmein",
+  "admin123",
+  "123456789",
+  "111111111111",
+]);
+
+function validatePassword(password: string): string | null {
+  if (password.length < 12) {
+    return "Password must be at least 12 characters long.";
+  }
+
+  if (password.length > 128) {
+    return "Password must be no more than 128 characters long.";
+  }
+
+  if (password !== password.trim()) {
+    return "Password must not start or end with whitespace.";
+  }
+
+  if (COMMON_PASSWORD_DENYLIST.has(password.toLowerCase())) {
+    return "Please choose a less common password.";
+  }
+
+  return null;
+}
+
 export default function RegisterPage() {
   const router = useRouter();
   const [username, setUsername] = useState("");
@@ -19,6 +49,12 @@ export default function RegisterPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      setError(passwordError);
+      return;
+    }
 
     if (password !== confirmPassword) {
       setError("Passwords do not match. Please try again.");
@@ -77,15 +113,20 @@ export default function RegisterPage() {
             placeholder="you@example.com"
             required
           />
-          <Input
-            label="Password"
-            id="password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••"
-            required
-          />
+          <div>
+            <Input
+              label="Password"
+              id="password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              required
+            />
+            <p className="mt-2 text-sm text-stone-500">
+              Use at least 12 characters. Longer passphrases are recommended.
+            </p>
+          </div>
           <Input
             label="Confirm Password"
             id="confirmPassword"

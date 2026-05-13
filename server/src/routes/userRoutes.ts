@@ -4,6 +4,40 @@ import bcrypt from 'bcrypt';
 
 const router = Router();
 
+const COMMON_PASSWORD_DENYLIST = new Set([
+  'password',
+  'password123',
+  'qwerty123',
+  'letmein',
+  'admin123',
+  '123456789',
+  '111111111111',
+]);
+
+function validatePassword(password: unknown): string | null {
+  if (typeof password !== 'string') {
+    return 'Password must be a string.';
+  }
+
+  if (password.length < 12) {
+    return 'Password must be at least 12 characters long.';
+  }
+
+  if (password.length > 128) {
+    return 'Password must be no more than 128 characters long.';
+  }
+
+  if (password !== password.trim()) {
+    return 'Password must not start or end with whitespace.';
+  }
+
+  if (COMMON_PASSWORD_DENYLIST.has(password.toLowerCase())) {
+    return 'Please choose a less common password.';
+  }
+
+  return null;
+}
+
 // GET /users
 router.get('/', async (req, res) => {
   try {
@@ -20,8 +54,13 @@ router.post('/register', async (req, res) => {
     const { username, email, password } = req.body;
 
     // 1. 检查是否为空
-    if (!username || !email || !password) {
+    if (!username || !email) {
       return res.status(400).json({ error: 'All fields are required' });
+    }
+
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      return res.status(400).json({ error: passwordError });
     }
 
     // 2. 检查用户是否已存在
