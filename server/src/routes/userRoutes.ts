@@ -14,6 +14,18 @@ const COMMON_PASSWORD_DENYLIST = new Set([
   '111111111111',
 ]);
 
+function normalizeEmail(email: unknown): string {
+  return typeof email === 'string' ? email.trim().toLowerCase() : '';
+}
+
+function validateEmail(email: string): string | null {
+  if (!/^[^\s@]+@[^\s@]+$/.test(email)) {
+    return 'Please enter a valid email address.';
+  }
+
+  return null;
+}
+
 function validatePassword(password: unknown): string | null {
   if (typeof password !== 'string') {
     return 'Password must be a string.';
@@ -52,10 +64,16 @@ router.get('/', async (req, res) => {
 router.post('/register', async (req, res) => {
   try {
     const { username, email, password } = req.body;
+    const normalizedEmail = normalizeEmail(email);
 
     // 1. 检查是否为空
-    if (!username || !email) {
+    if (!username || !normalizedEmail) {
       return res.status(400).json({ error: 'All fields are required' });
+    }
+
+    const emailError = validateEmail(normalizedEmail);
+    if (emailError) {
+      return res.status(400).json({ error: emailError });
     }
 
     const passwordError = validatePassword(password);
@@ -66,7 +84,7 @@ router.post('/register', async (req, res) => {
     // 2. 检查用户是否已存在
     const existingUser = await prisma.user.findFirst({
       where: {
-        OR: [{ email }, { username }],
+        OR: [{ email: normalizedEmail }, { username }],
       },
     });
 
@@ -81,7 +99,7 @@ router.post('/register', async (req, res) => {
     const newUser = await prisma.user.create({
       data: {
         username,
-        email,
+        email: normalizedEmail,
         password: hashedPassword,
       },
     });
@@ -104,15 +122,21 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
+    const normalizedEmail = normalizeEmail(email);
 
     // 1. 检查输入
-    if (!email || !password) {
+    if (!normalizedEmail || !password) {
       return res.status(400).json({ error: 'Email and password are required' });
+    }
+
+    const emailError = validateEmail(normalizedEmail);
+    if (emailError) {
+      return res.status(400).json({ error: emailError });
     }
 
     // 2. 查找用户
     const user = await prisma.user.findUnique({
-      where: { email },
+      where: { email: normalizedEmail },
     });
 
     if (!user) {

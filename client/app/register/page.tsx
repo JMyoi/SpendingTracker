@@ -64,7 +64,7 @@ export default function RegisterPage() {
     setIsSubmitting(true);
 
     try {
-      const data = await registerUser(username, email, password);
+      const data = await registerUser(username, email.trim(), password);
       storeCurrentUser(data.user);
       router.push("/dashboard");
     } catch (error) {
