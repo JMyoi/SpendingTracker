@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import type { Request } from 'express';
 import type { Prisma } from '@prisma/client';
 import prisma from '../prisma';
 
@@ -36,6 +37,7 @@ const allowedCategories = [
   'Other',
 ] as const;
 type ExpenseCategory = (typeof allowedCategories)[number];
+type RequestWithAuth = Request & { auth?: { userId?: unknown } };
 
 function getQueryValue(value: unknown) {
   return Array.isArray(value) ? value[0] : value;
@@ -82,6 +84,10 @@ function getCalendarMonthIndex(date: Date) {
 
 function getCalendarDay(date: Date) {
   return date.getUTCDate();
+}
+
+function getAuthenticatedUserId(req: Request) {
+  return parsePositiveInteger((req as RequestWithAuth).auth?.userId);
 }
 
 function parseExpenseDate(value: unknown) {
@@ -612,21 +618,23 @@ router.post('/bulk', async (req, res) => {
 // DELETE /expenses/:id
 router.delete('/:id', async (req, res) => {
   try {
-    const { id } = req.params;
-
-    // 1. 检查 id 是否存在
-    const expense = await prisma.expense.findUnique({
-      where: { id: Number(id) },
-    });
-
-    if (!expense) {
-      return res.status(404).json({ error: 'Expense not found' });
+    const expenseId = parsePositiveInteger(req.params.id);
+    if (!expenseId) {
+      return res.status(400).json({ error: 'id must be a positive integer' });
     }
 
-    // 2. 删除
-    await prisma.expense.delete({
-      where: { id: Number(id) },
+    const authenticatedUserId = getAuthenticatedUserId(req);
+    if (!authenticatedUserId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    const deleteResult = await prisma.expense.deleteMany({
+      where: { id: expenseId, userId: authenticatedUserId },
     });
+
+    if (deleteResult.count === 0) {
+      return res.status(404).json({ error: 'Expense not found' });
+    }
 
     res.json({
       message: 'Expense deleted successfully',
@@ -640,20 +648,48 @@ router.delete('/:id', async (req, res) => {
 // PUT /expenses/:id
 router.put('/:id', async (req, res) => {
   try {
-    const { id } = req.params;
+    const expenseId = parsePositiveInteger(req.params.id);
+    if (!expenseId) {
+      return res.status(400).json({ error: 'id must be a positive integer' });
+    }
+
+    const authenticatedUserId = getAuthenticatedUserId(req);
+    if (!authenticatedUserId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+      return res.status(400).json({ error: 'Request body must be an object' });
+    }
+
     const { title, amount, category, date, description } = req.body;
 
-    // 1. 检查是否存在
-    const expense = await prisma.expense.findUnique({
-      where: { id: Number(id) },
-    });
+    if (title !== undefined && (typeof title !== 'string' || !title.trim())) {
+      return res.status(400).json({ error: 'title must be a non-empty string' });
+    }
 
-    if (!expense) {
-      return res.status(404).json({ error: 'Expense not found' });
+    const parsedAmount = amount === undefined ? undefined : Number(amount);
+    if (
+      parsedAmount !== undefined &&
+      (!Number.isFinite(parsedAmount) || parsedAmount <= 0)
+    ) {
+      return res.status(400).json({ error: 'amount must be a positive number' });
+    }
+
+    if (category !== undefined && (typeof category !== 'string' || !category.trim())) {
+      return res.status(400).json({ error: 'category must be a non-empty string' });
+    }
+
+    if (
+      description !== undefined &&
+      description !== null &&
+      typeof description !== 'string'
+    ) {
+      return res.status(400).json({ error: 'description must be a string' });
     }
 
     let parsedDate: Date | undefined;
-    if (date) {
+    if (date !== undefined) {
       const nextDate = parseExpenseDate(date);
       if (!nextDate) {
         return res.status(400).json({ error: 'date must be in YYYY-MM-DD format' });
@@ -661,13 +697,20 @@ router.put('/:id', async (req, res) => {
       parsedDate = nextDate;
     }
 
-    // 2. 更新
+    const expense = await prisma.expense.findFirst({
+      where: { id: expenseId, userId: authenticatedUserId },
+    });
+
+    if (!expense) {
+      return res.status(404).json({ error: 'Expense not found' });
+    }
+
     const updatedExpense = await prisma.expense.update({
-      where: { id: Number(id) },
+      where: { id: expenseId },
       data: {
-        title,
-        amount: amount ? parseFloat(amount) : undefined,
-        category,
+        title: typeof title === 'string' ? title.trim() : undefined,
+        amount: parsedAmount,
+        category: typeof category === 'string' ? category.trim() : undefined,
         date: parsedDate,
         description,
       },
