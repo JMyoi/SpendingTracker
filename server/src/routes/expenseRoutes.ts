@@ -88,7 +88,13 @@ function getCalendarDay(date: Date) {
 }
 
 function getAuthenticatedUserId(req: Request) {
-  return parsePositiveInteger((req as RequestWithAuth).auth?.userId);
+  const userId = parsePositiveInteger((req as RequestWithAuth).auth?.userId);
+
+  if (!userId) {
+    throw new Error('Missing authenticated user');
+  }
+
+  return userId;
 }
 
 function parseExpenseDate(value: unknown) {
