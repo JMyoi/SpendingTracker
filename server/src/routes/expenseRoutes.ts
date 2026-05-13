@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import type { Request } from 'express';
 import type { Prisma } from '@prisma/client';
 import prisma from '../prisma';
 import requireAuth from '../middleware/requireAuth';
@@ -37,6 +38,7 @@ const allowedCategories = [
   'Other',
 ] as const;
 type ExpenseCategory = (typeof allowedCategories)[number];
+type RequestWithAuth = Request & { auth?: { userId?: unknown } };
 
 function getQueryValue(value: unknown) {
   return Array.isArray(value) ? value[0] : value;
@@ -85,6 +87,16 @@ function getCalendarDay(date: Date) {
   return date.getUTCDate();
 }
 
+function getAuthenticatedUserId(req: Request) {
+  const userId = parsePositiveInteger((req as RequestWithAuth).auth?.userId);
+
+  if (!userId) {
+    throw new Error('Invalid user session');
+  }
+
+  return userId;
+}
+
 function parseExpenseDate(value: unknown) {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     return null;
@@ -102,14 +114,6 @@ function parseExpenseDate(value: unknown) {
   }
 
   return parsedDate;
-}
-
-function getAuthenticatedUserId(req: { auth?: { userId: number } }) {
-  if (!req.auth) {
-    throw new Error('Missing authenticated user');
-  }
-
-  return req.auth.userId;
 }
 
 function buildExpenseFilter(query: Record<string, unknown>, userId: number) {
@@ -558,24 +562,23 @@ router.post('/bulk', requireAuth, async (req, res) => {
 // DELETE /expenses/:id
 router.delete('/:id', requireAuth, async (req, res) => {
   try {
-    const userId = getAuthenticatedUserId(req);
     const expenseId = parsePositiveInteger(req.params.id);
-
     if (!expenseId) {
       return res.status(400).json({ error: 'id must be a positive integer' });
     }
 
-    const expense = await prisma.expense.findFirst({
-      where: { id: expenseId, userId },
-    });
-
-    if (!expense) {
-      return res.status(404).json({ error: 'Expense not found' });
+    const authenticatedUserId = getAuthenticatedUserId(req);
+    if (!authenticatedUserId) {
+      return res.status(401).json({ error: 'Authentication required' });
     }
 
-    await prisma.expense.delete({
-      where: { id: expenseId },
+    const deleteResult = await prisma.expense.deleteMany({
+      where: { id: expenseId, userId: authenticatedUserId },
     });
+
+    if (deleteResult.count === 0) {
+      return res.status(404).json({ error: 'Expense not found' });
+    }
 
     res.json({
       message: 'Expense deleted successfully',
@@ -589,24 +592,48 @@ router.delete('/:id', requireAuth, async (req, res) => {
 // PUT /expenses/:id
 router.put('/:id', requireAuth, async (req, res) => {
   try {
-    const userId = getAuthenticatedUserId(req);
     const expenseId = parsePositiveInteger(req.params.id);
-    const { title, amount, category, date, description } = req.body;
-
     if (!expenseId) {
       return res.status(400).json({ error: 'id must be a positive integer' });
     }
 
-    const expense = await prisma.expense.findFirst({
-      where: { id: expenseId, userId },
-    });
+    const authenticatedUserId = getAuthenticatedUserId(req);
+    if (!authenticatedUserId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
 
-    if (!expense) {
-      return res.status(404).json({ error: 'Expense not found' });
+    if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+      return res.status(400).json({ error: 'Request body must be an object' });
+    }
+
+    const { title, amount, category, date, description } = req.body;
+
+    if (title !== undefined && (typeof title !== 'string' || !title.trim())) {
+      return res.status(400).json({ error: 'title must be a non-empty string' });
+    }
+
+    const parsedAmount = amount === undefined ? undefined : Number(amount);
+    if (
+      parsedAmount !== undefined &&
+      (!Number.isFinite(parsedAmount) || parsedAmount <= 0)
+    ) {
+      return res.status(400).json({ error: 'amount must be a positive number' });
+    }
+
+    if (category !== undefined && (typeof category !== 'string' || !category.trim())) {
+      return res.status(400).json({ error: 'category must be a non-empty string' });
+    }
+
+    if (
+      description !== undefined &&
+      description !== null &&
+      typeof description !== 'string'
+    ) {
+      return res.status(400).json({ error: 'description must be a string' });
     }
 
     let parsedDate: Date | undefined;
-    if (date) {
+    if (date !== undefined) {
       const nextDate = parseExpenseDate(date);
       if (!nextDate) {
         return res.status(400).json({ error: 'date must be in YYYY-MM-DD format' });
@@ -614,12 +641,20 @@ router.put('/:id', requireAuth, async (req, res) => {
       parsedDate = nextDate;
     }
 
+    const expense = await prisma.expense.findFirst({
+      where: { id: expenseId, userId: authenticatedUserId },
+    });
+
+    if (!expense) {
+      return res.status(404).json({ error: 'Expense not found' });
+    }
+
     const updatedExpense = await prisma.expense.update({
       where: { id: expenseId },
       data: {
-        title,
-        amount: amount ? parseFloat(amount) : undefined,
-        category,
+        title: typeof title === 'string' ? title.trim() : undefined,
+        amount: parsedAmount,
+        category: typeof category === 'string' ? category.trim() : undefined,
         date: parsedDate,
         description,
       },
