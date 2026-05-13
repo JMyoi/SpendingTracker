@@ -91,7 +91,7 @@ function getAuthenticatedUserId(req: Request) {
   const userId = parsePositiveInteger((req as RequestWithAuth).auth?.userId);
 
   if (!userId) {
-    throw new Error('Missing authenticated user');
+    throw new Error('Invalid user session');
   }
 
   return userId;
