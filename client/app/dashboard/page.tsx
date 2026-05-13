@@ -257,7 +257,6 @@ export default function DashboardPage() {
     }
 
     const payload: CreateExpenseInput = {
-      userId: user.id,
       title: form.title.trim(),
       amount: parsedAmount,
       category: form.category,

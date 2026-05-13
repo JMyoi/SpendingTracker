@@ -231,7 +231,7 @@ export default function ImageImportModal({
     setFormError("");
 
     try {
-      await createExpensesBulk(userId, expenses);
+      await createExpensesBulk(expenses);
       onSaved();
     } catch (error) {
       setFormError(

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import type { Prisma } from '@prisma/client';
 import prisma from '../prisma';
+import requireAuth from '../middleware/requireAuth';
 
 const router = Router();
 
@@ -103,16 +104,12 @@ function parseExpenseDate(value: unknown) {
   return parsedDate;
 }
 
-async function findUserByQueryId(userId: unknown) {
-  const parsedUserId = parsePositiveInteger(userId);
-
-  if (!parsedUserId) {
-    return null;
+function getAuthenticatedUserId(req: { auth?: { userId: number } }) {
+  if (!req.auth) {
+    throw new Error('Missing authenticated user');
   }
 
-  return prisma.user.findUnique({
-    where: { id: parsedUserId },
-  });
+  return req.auth.userId;
 }
 
 function buildExpenseFilter(query: Record<string, unknown>, userId: number) {
@@ -171,17 +168,9 @@ const monthShortLabels = [
 ];
 
 // GET /expenses/dashboard
-router.get('/dashboard', async (req, res) => {
+router.get('/dashboard', requireAuth, async (req, res) => {
   try {
-    const user = await findUserByQueryId(req.query.userId);
-
-    if (!req.query.userId) {
-      return res.status(400).json({ error: 'userId is required' });
-    }
-
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
+    const userId = getAuthenticatedUserId(req);
 
     const now = new Date();
     const currentYear = now.getFullYear();
@@ -199,7 +188,7 @@ router.get('/dashboard', async (req, res) => {
     ] = await Promise.all([
       prisma.expense.aggregate({
         where: {
-          userId: user.id,
+          userId,
           date: {
             gte: monthStart,
             lt: nextMonthStart,
@@ -209,19 +198,19 @@ router.get('/dashboard', async (req, res) => {
         _count: { id: true },
       }),
       prisma.expense.aggregate({
-        where: { userId: user.id },
+        where: { userId },
         _sum: { amount: true },
         _count: { id: true },
       }),
       prisma.expense.findMany({
-        where: { userId: user.id },
+        where: { userId },
         orderBy: { date: 'desc' },
         take: 10,
         select: expenseSelect,
       }),
       prisma.expense.findMany({
         where: {
-          userId: user.id,
+          userId,
           date: {
             gte: sixMonthsAgoStart,
             lt: nextMonthStart,
@@ -232,7 +221,7 @@ router.get('/dashboard', async (req, res) => {
       prisma.expense.groupBy({
         by: ['category'],
         where: {
-          userId: user.id,
+          userId,
           date: {
             gte: monthStart,
             lt: nextMonthStart,
@@ -287,20 +276,12 @@ router.get('/dashboard', async (req, res) => {
 });
 
 // GET /expenses/years
-router.get('/years', async (req, res) => {
+router.get('/years', requireAuth, async (req, res) => {
   try {
-    if (!req.query.userId) {
-      return res.status(400).json({ error: 'userId is required' });
-    }
-
-    const user = await findUserByQueryId(req.query.userId);
-
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
+    const userId = getAuthenticatedUserId(req);
 
     const expenses = await prisma.expense.findMany({
-      where: { userId: user.id },
+      where: { userId },
       select: { date: true },
     });
 
@@ -316,21 +297,13 @@ router.get('/years', async (req, res) => {
 });
 
 // GET /expenses/trend
-router.get('/trend', async (req, res) => {
+router.get('/trend', requireAuth, async (req, res) => {
   try {
-    if (!req.query.userId) {
-      return res.status(400).json({ error: 'userId is required' });
-    }
-
-    const user = await findUserByQueryId(req.query.userId);
-
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
+    const userId = getAuthenticatedUserId(req);
 
     const { where, yearParam, monthParam } = buildExpenseFilter(
       req.query as Record<string, unknown>,
-      user.id,
+      userId,
     );
 
     const rows = await prisma.expense.findMany({
@@ -389,17 +362,9 @@ router.get('/trend', async (req, res) => {
 });
 
 // GET /expenses
-router.get('/', async (req, res) => {
+router.get('/', requireAuth, async (req, res) => {
   try {
-    const user = await findUserByQueryId(req.query.userId);
-
-    if (!req.query.userId) {
-      return res.status(400).json({ error: 'userId is required' });
-    }
-
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
+    const userId = getAuthenticatedUserId(req);
 
     const page = parsePositiveInteger(req.query.page, 1);
     const limit = parsePositiveInteger(req.query.limit, 10);
@@ -421,7 +386,7 @@ router.get('/', async (req, res) => {
 
     const { where } = buildExpenseFilter(
       req.query as Record<string, unknown>,
-      user.id,
+      userId,
     );
 
     const [expenses, totalRecords, sumAggregate] = await Promise.all([
@@ -463,20 +428,13 @@ router.get('/', async (req, res) => {
 });
 
 // POST /expenses
-router.post('/', async (req, res) => {
+router.post('/', requireAuth, async (req, res) => {
   try {
-    const { userId, title, amount, category, date, description } = req.body;
+    const userId = getAuthenticatedUserId(req);
+    const { title, amount, category, date, description } = req.body;
 
-    if (!userId || !title || !amount || !category || !date) {
+    if (!title || !amount || !category || !date) {
       return res.status(400).json({ error: 'Missing required fields' });
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { id: Number(userId) },
-    });
-
-    if (!user) {
-      return res.status(400).json({ error: 'User not found' });
     }
 
     const parsedDate = parseExpenseDate(date);
@@ -486,7 +444,7 @@ router.post('/', async (req, res) => {
 
     const newExpense = await prisma.expense.create({
       data: {
-        userId: Number(userId),
+        userId,
         title,
         amount: parseFloat(amount),
         category,
@@ -506,25 +464,13 @@ router.post('/', async (req, res) => {
 });
 
 // POST /expenses/bulk
-router.post('/bulk', async (req, res) => {
+router.post('/bulk', requireAuth, async (req, res) => {
   try {
-    const { userId, expenses } = req.body;
-    const parsedUserId = Number(userId);
-
-    if (!Number.isInteger(parsedUserId) || parsedUserId <= 0) {
-      return res.status(400).json({ error: 'userId must be a positive integer' });
-    }
+    const userId = getAuthenticatedUserId(req);
+    const { expenses } = req.body;
 
     if (!Array.isArray(expenses) || expenses.length === 0) {
       return res.status(400).json({ error: 'expenses must be a non-empty array' });
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { id: parsedUserId },
-    });
-
-    if (!user) {
-      return res.status(400).json({ error: 'User not found' });
     }
 
     const normalizedExpenses: {
@@ -579,7 +525,7 @@ router.post('/bulk', async (req, res) => {
       }
 
       normalizedExpenses.push({
-        userId: user.id,
+        userId,
         title,
         amount: parseFloat(amount.toFixed(2)),
         category,
@@ -610,22 +556,25 @@ router.post('/bulk', async (req, res) => {
 
 
 // DELETE /expenses/:id
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireAuth, async (req, res) => {
   try {
-    const { id } = req.params;
+    const userId = getAuthenticatedUserId(req);
+    const expenseId = parsePositiveInteger(req.params.id);
 
-    // 1. 检查 id 是否存在
-    const expense = await prisma.expense.findUnique({
-      where: { id: Number(id) },
+    if (!expenseId) {
+      return res.status(400).json({ error: 'id must be a positive integer' });
+    }
+
+    const expense = await prisma.expense.findFirst({
+      where: { id: expenseId, userId },
     });
 
     if (!expense) {
       return res.status(404).json({ error: 'Expense not found' });
     }
 
-    // 2. 删除
     await prisma.expense.delete({
-      where: { id: Number(id) },
+      where: { id: expenseId },
     });
 
     res.json({
@@ -638,14 +587,18 @@ router.delete('/:id', async (req, res) => {
 });
 
 // PUT /expenses/:id
-router.put('/:id', async (req, res) => {
+router.put('/:id', requireAuth, async (req, res) => {
   try {
-    const { id } = req.params;
+    const userId = getAuthenticatedUserId(req);
+    const expenseId = parsePositiveInteger(req.params.id);
     const { title, amount, category, date, description } = req.body;
 
-    // 1. 检查是否存在
-    const expense = await prisma.expense.findUnique({
-      where: { id: Number(id) },
+    if (!expenseId) {
+      return res.status(400).json({ error: 'id must be a positive integer' });
+    }
+
+    const expense = await prisma.expense.findFirst({
+      where: { id: expenseId, userId },
     });
 
     if (!expense) {
@@ -661,9 +614,8 @@ router.put('/:id', async (req, res) => {
       parsedDate = nextDate;
     }
 
-    // 2. 更新
     const updatedExpense = await prisma.expense.update({
-      where: { id: Number(id) },
+      where: { id: expenseId },
       data: {
         title,
         amount: amount ? parseFloat(amount) : undefined,
